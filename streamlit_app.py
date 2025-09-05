@@ -78,7 +78,7 @@ tool_dict = {"get_accident_records":get_accident_records,"get_chemical_usage":ge
 tools = [get_accident_records,get_chemical_usage,get_risk_assessment]
 llm_with_tools = llm.bind_tools(tools=tools)
 
-st.title("RAG Chatbot for Company Documents 📄")
+st.title("DOOSAN RISK MANAGEMENT AI Chatbot 📄")
 
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
