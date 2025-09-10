@@ -125,14 +125,19 @@ def get_chemical_details(query:str):
         if response.status_code == 200:
             data = response.text
             table_data=xml_to_table(xml_data=data)
-            response = client.responses.create(
-                model="gpt-4.1-nano",
-                instructions=f"You are a helpful assistant.From this data give the user information {table_data}. From this table carefully extract casNo,chemId,chemNameKor,enNo, KeNO,lastDate,unNo and is it Kosha Confirmed or not for the given Chemimal name entered by the user",
-                input=query,
-            )
-            return response.output_text
+            return table_data
         else:
             return None
+
+def chemical_output(table_data,query):
+    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+    response = client.responses.create(
+            model="gpt-4.1-nano",
+            instructions=f"You are a helpful assistant.From this data give the user information {table_data}. From this table carefully extract casNo,chemId,chemNameKor,enNo, KeNO,lastDate,unNo and is it Kosha Confirmed or not for the given Chemimal name entered by the user",
+            input=query,
+        )
+    return response.output_text
 
 @tool
 def get_regulations_data(query: str) -> str:
@@ -163,14 +168,14 @@ st.title("DOOSAN RISK MANAGEMENT AI Chatbot 📄")
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 
-for message in st.session_state.chat_history:
-    if message.type == 'tool':
-        print("Here is messages tools--------",message)
-        with st.expander(label=message.tool_call_id,icon='📖'):
-            st.write(message.content)
-        continue
-    with st.chat_message(message.type):
-        st.markdown(message.content)
+# for message in st.session_state.chat_history:
+#     if message:
+#         print("Here is messages tools--------",message)
+#         with st.expander(label=message.tool_call_id,icon='📖'):
+#             st.write(message.content)
+#         continue
+#     with st.chat_message(message.type):
+#         st.markdown(message.content)
 
 if user_query := st.chat_input("Ask a question about chemical usage, accidents, or risks."):
     
@@ -181,18 +186,25 @@ if user_query := st.chat_input("Ask a question about chemical usage, accidents, 
         with st.spinner("Thinking..."):
             messages = [HumanMessage(user_query)]
             ai_msg = llm_with_tools.invoke(messages)
+            print(ai_msg)
             messages.append(ai_msg)
-            while (ai_msg.tool_calls):
-                for tool_call in ai_msg.tool_calls:
-                    selected_tool = tool_dict[tool_call["name"].lower()]
-                    print("Here is the selected tool-------",selected_tool)
-                    tool_msg = selected_tool.invoke(tool_call)
-                    messages.append(tool_msg)
-                    with st.expander(tool_msg.tool_call_id,icon='📖'):
-                        st.write(tool_msg.content)
-                ai_msg = llm_with_tools.invoke(messages)
-                messages.append(ai_msg)
+            #while (ai_msg.tool_calls):
+            for tool_call in ai_msg.tool_calls:
+                selected_tool = tool_dict[tool_call["name"].lower()]
+                print("Here is the selected tool-------",selected_tool)
+                tool_name= selected_tool.name
+                print("Here is the selected tool name -------",tool_name)
+                if tool_name == "get_chemical_details":
+                    table_data=get_chemical_details(user_query)
+                    output=chemical_output(table_data=table_data,query=user_query)
 
-            answer = messages[-1].content
+                    #tool_msg = selected_tool.invoke(tool_call)
+                #     messages.append(tool_msg)
+                #     with st.expander(tool_msg.tool_call_id,icon='📖'):
+                #         st.write(tool_msg.content)
+                # ai_msg = llm_with_tools.invoke(messages)
+                messages.append(output)
+
+            answer = output
             st.markdown(answer)
             st.session_state.chat_history.extend(messages)
