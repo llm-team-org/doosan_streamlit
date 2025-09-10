@@ -10,7 +10,9 @@ from langchain_openai import ChatOpenAI
 from langchain_core.tools import tool
 from langchain_core.messages import HumanMessage
 from dotenv import load_dotenv
-load_dotenv(dotenv_path=".env")
+import json
+import pandas as pd
+load_dotenv()
 
 llm = ChatOpenAI(model="gpt-4.1-mini", temperature=0,api_key=os.getenv("OPENAI_API_KEY"))
 
@@ -63,6 +65,16 @@ def get_accident_records(query: str) -> str:
     docs = [doc.payload['text'] for doc in retrieved_docs.points]
     return "\n\n".join(docs)
 
+def accident_output(accident_docs,query):
+    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+    response = client.responses.create(
+            model="gpt-4.1-nano",
+            instructions=f"You are a helpful assistant.From this data give the user information {accident_docs}. From the collected docs table carefully extract the accident records relevant to the query entered by the user",
+            input=query,
+        )
+    return response.output_text
+
 @tool
 def get_chemical_usage(query: str) -> str:
     """
@@ -102,6 +114,61 @@ def get_risk_assessment(query: str) -> str:
     )
     docs = [doc.payload['text'] for doc in retrieved_docs.points]
     return "\n\n".join(docs)
+
+def risk_assessment_output(risk_assessment_docs, query):
+    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    
+    # Create structured prompt for JSON output
+    json_instructions = f"""
+You are a Risk Assessment Assistant. Your task is to analyze the provided risk assessment documents: {risk_assessment_docs}
+
+Instructions:
+- Always return the output in strict JSON format.
+- Use the predefined field names exactly as listed below.
+- If data cannot be found, set the field value to "N/A".
+- If no structured data is available at all, return a JSON object with all fields set to "N/A".
+- Do not include explanations, extra text, or markdown—only JSON.
+
+Output Format:
+[
+  {{
+    "Hazard Factor": "Description of the hazard",
+    "Current Frequency": "Low/Medium/High or N/A",
+    "Current Severity": "Low/Medium/High or N/A",
+    "Current Risk": "Low/Medium/High or N/A",
+    "Current Measures": "Existing safety measures or N/A",
+    "Reduction Measures": "Proposed reduction measures or N/A",
+    "Improved Frequency": "Low/Medium/High or N/A",
+    "Improved Severity": "Low/Medium/High or N/A",
+    "Improved Risk": "Low/Medium/High or N/A"
+  }}
+]"""
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4.1-mini",
+            messages=[{"role": "system", "content": json_instructions},
+                      {"role": "user", "content": query}],
+            response_format={"type": "json_object"}
+        )
+
+        parsed_json = json.loads(response.choices[0].message.content)
+        return parsed_json
+        
+    except (json.JSONDecodeError, KeyError, Exception) as e:
+        print(f"Error in risk_assessment_output: {e}")
+        # Return error structure if JSON parsing fails
+        return [{
+            "Hazard Factor": "Error parsing data",
+            "Current Frequency": "N/A",
+            "Current Severity": "N/A",
+            "Current Risk": "N/A",
+            "Current Measures": "N/A",
+            "Reduction Measures": "N/A",
+            "Improved Frequency": "N/A",
+            "Improved Severity": "N/A",
+            "Improved Risk": "N/A"
+        }]
 
 @tool
 def get_chemical_details(query:str):
@@ -159,6 +226,16 @@ def get_regulations_data(query: str) -> str:
     docs = [doc.payload['text'] for doc in retrieved_docs.points]
     return "\n\n".join(docs)
 
+def regulations_output(regulations_docs,query):
+    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+    response = client.responses.create(
+            model="gpt-4.1-nano",
+            instructions=f"You are a helpful assistant.From this data give the user information {regulations_docs}. From the collected docs table carefully extract the relevants rules relevant to the query entered by the user",
+            input=query,
+        )
+    return response.output_text
+
 tool_dict = {"get_accident_records":get_accident_records,"get_chemical_usage":get_chemical_usage,"get_risk_assessment":get_risk_assessment,"get_regulations_data":get_regulations_data,"get_chemical_details":get_chemical_details}
 tools = [get_accident_records,get_chemical_usage,get_risk_assessment,get_regulations_data,get_chemical_details]
 llm_with_tools = llm.bind_tools(tools=tools)
@@ -197,6 +274,34 @@ if user_query := st.chat_input("Ask a question about chemical usage, accidents, 
                 if tool_name == "get_chemical_details":
                     table_data=get_chemical_details(user_query)
                     output=chemical_output(table_data=table_data,query=user_query)
+                elif tool_name == "get_regulations_data":
+                    regulations_docs=get_regulations_data(user_query)
+                    output=regulations_output(regulations_docs=regulations_docs,query=user_query)
+                elif tool_name == "get_accident_records":
+                    accident_docs=get_accident_records(user_query)
+                    output=accident_output(accident_docs=accident_docs,query=user_query)
+                elif tool_name == "get_risk_assessment":
+                    risk_assessment_docs=get_risk_assessment(user_query)
+                    json_data=risk_assessment_output(risk_assessment_docs=risk_assessment_docs,query=user_query)
+                    
+                    # Construct and display table
+                    if json_data:
+                        print("Here is the json data-------",json_data)
+                        
+                        # Ensure json_data is a list
+                        if isinstance(json_data, dict):
+                            json_data = [json_data]
+                        elif not isinstance(json_data, list):
+                            json_data = [json_data]
+                        
+                        df = pd.DataFrame(json_data)
+                        st.subheader("📊 Risk Assessment Analysis")
+                        st.dataframe(df, use_container_width=True, hide_index=True)
+                        output = f"Retrieved {len(json_data)} risk assessment records"
+                    else:
+                        st.error("No valid risk assessment data to display")
+                        output = "Error processing risk assessment data"
+                
 
                     #tool_msg = selected_tool.invoke(tool_call)
                 #     messages.append(tool_msg)
