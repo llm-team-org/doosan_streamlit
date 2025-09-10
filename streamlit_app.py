@@ -14,7 +14,7 @@ import json
 import pandas as pd
 load_dotenv()
 
-llm = ChatOpenAI(model="gpt-4.1-mini", temperature=0,api_key=os.getenv("OPENAI_API_KEY"))
+llm = ChatOpenAI(model="gpt-4.1", temperature=0,api_key=os.getenv("OPENAI_API_KEY"))
 
 
 if "client" not in st.session_state:
@@ -48,10 +48,10 @@ def xml_to_table(xml_data):
 @tool
 def get_accident_records(query: str) -> str:
     """
-    Retrieves information from company documents.
-    This tool should be used to answer questions about accident records.
-    The search query must be in Korean.
-    Example query: '화학 물질 사용', '사고 기록', '위험 평가'.
+    Retrieves accident records and safety incident information from company documents.
+    Use this tool for questions about workplace accidents, safety incidents, injuries, or safety violations.
+    Supports both English and Korean queries.
+    Example queries: '사고 기록', 'accident records', '안전 사고', 'workplace injuries', '사고 보고서', 'safety incidents'.
     """
     retrieved_docs = st.session_state.client.query_points(
         collection_name="doosan_accident_records",
@@ -78,10 +78,10 @@ def accident_output(accident_docs,query):
 @tool
 def get_chemical_usage(query: str) -> str:
     """
-    Retrieves information from company documents.
-    This tool should be used to answer questions about chemical usage.
-    The search query must be in Korean.
-    Example query: '화학 물질 사용', '사고 기록', '위험 평가'.
+    Retrieves chemical usage and safety information from company documents.
+    Use this tool for questions about chemical substances, chemical safety, MSDS, chemical handling, or chemical exposure.
+    Supports both English and Korean queries.
+    Example queries: '화학 물질 사용', 'chemical usage', '화학 안전', 'chemical safety', 'MSDS', '화학 물질 안전보건자료'.
     """
     retrieved_docs = st.session_state.client.query_points(
         collection_name="doosan_chemical_usage",
@@ -98,10 +98,10 @@ def get_chemical_usage(query: str) -> str:
 @tool
 def get_risk_assessment(query: str) -> str:
     """
-    Retrieves information from company documents.
-    This tool should be used to answer questions about chemical usage.
-    The search query must be in Korean.
-    Example query: '화학 물질 사용', '사고 기록', '위험 평가'.
+    Retrieves risk assessment and safety evaluation information from company documents.
+    Use this tool for questions about risk analysis, safety assessments, hazard identification, risk levels, or safety measures.
+    Supports both English and Korean queries.
+    Example queries: '위험 평가', 'risk assessment', '안전 평가', 'safety evaluation', '위험 분석', 'hazard analysis', '위험도 평가'.
     """
     retrieved_docs = st.session_state.client.query_points(
         collection_name="doosan_risk_assessment",
@@ -128,6 +128,8 @@ Instructions:
 - If data cannot be found, set the field value to "N/A".
 - If no structured data is available at all, return a JSON object with all fields set to "N/A".
 - Do not include explanations, extra text, or markdown—only JSON.
+- Provide whole table 
+- If the user query is in korean language then provide the output table in korean language
 
 Output Format:
 [
@@ -217,10 +219,10 @@ def chemical_output(table_data,query):
 @tool
 def get_regulations_data(query: str) -> str:
     """
-    Retrieves information from company documents.
-    This tool should be used to answer questions about regulations and compliance.
-    The search query must be in Korean.
-    Example query: '규정', '법규', '준수 사항', '컴플라이언스'.
+    Retrieves regulations, compliance, and legal requirements information from company documents.
+    Use this tool for questions about safety regulations, compliance requirements, legal standards, or regulatory procedures.
+    Supports both English and Korean queries.
+    Example queries: '규정', 'regulations', '법규', 'legal requirements', '준수 사항', 'compliance', '컴플라이언스', 'safety standards'.
     """
     retrieved_docs = st.session_state.client.query_points(
         collection_name="doosan_regulations_data",
@@ -295,12 +297,11 @@ if user_query := st.chat_input("Ask a question about chemical usage, accidents, 
                         output=accident_output(accident_docs=accident_docs,query=user_query)
                     elif tool_name == "get_risk_assessment":
                         risk_assessment_docs=get_risk_assessment(user_query)
-                        if "table" in user_query.lower():
+                        if "table" in user_query.lower() or "테이블" in user_query.lower():
                             output=risk_assessment_docs
                             json_data=risk_assessment_table_output(risk_assessment_docs=risk_assessment_docs,query=user_query)
                             if json_data:
                                 print("Here is the json data-------",json_data)
-                                
                                 # Ensure json_data is a list
                                 if isinstance(json_data, dict):
                                     json_data = [json_data]
