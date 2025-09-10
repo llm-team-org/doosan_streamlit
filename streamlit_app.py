@@ -115,7 +115,7 @@ def get_risk_assessment(query: str) -> str:
     docs = [doc.payload['text'] for doc in retrieved_docs.points]
     return "\n\n".join(docs)
 
-def risk_assessment_output(risk_assessment_docs, query):
+def risk_assessment_table_output(risk_assessment_docs, query):
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
     
     # Create structured prompt for JSON output
@@ -169,6 +169,14 @@ Output Format:
             "Improved Severity": "N/A",
             "Improved Risk": "N/A"
         }]
+
+def risk_assessment_output(risk_assessment_docs, query):
+    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    response = client.responses.create(
+        model="gpt-4.1-nano",
+        instructions=f"You are a helpful assistant.From this data give the user information {risk_assessment_docs}. From the collected docs table carefully extract the relevant information for the query entered by the user",
+        input=query,)
+    return response.output_text
 
 @tool
 def get_chemical_details(query:str):
@@ -265,50 +273,62 @@ if user_query := st.chat_input("Ask a question about chemical usage, accidents, 
             ai_msg = llm_with_tools.invoke(messages)
             print(ai_msg)
             messages.append(ai_msg)
-            #while (ai_msg.tool_calls):
-            for tool_call in ai_msg.tool_calls:
-                selected_tool = tool_dict[tool_call["name"].lower()]
-                print("Here is the selected tool-------",selected_tool)
-                tool_name= selected_tool.name
-                print("Here is the selected tool name -------",tool_name)
-                if tool_name == "get_chemical_details":
-                    table_data=get_chemical_details(user_query)
-                    output=chemical_output(table_data=table_data,query=user_query)
-                elif tool_name == "get_regulations_data":
-                    regulations_docs=get_regulations_data(user_query)
-                    output=regulations_output(regulations_docs=regulations_docs,query=user_query)
-                elif tool_name == "get_accident_records":
-                    accident_docs=get_accident_records(user_query)
-                    output=accident_output(accident_docs=accident_docs,query=user_query)
-                elif tool_name == "get_risk_assessment":
-                    risk_assessment_docs=get_risk_assessment(user_query)
-                    json_data=risk_assessment_output(risk_assessment_docs=risk_assessment_docs,query=user_query)
+            # Initialize output variable
+            output = "No response generated"
+            
+            # Use while loop for continuous tool calls
+            while ai_msg.tool_calls:
+                for tool_call in ai_msg.tool_calls:
+                    selected_tool = tool_dict[tool_call["name"].lower()]
+                    print("Here is the selected tool-------",selected_tool)
+                    tool_name= selected_tool.name
+                    print("Here is the selected tool name -------",tool_name)
                     
-                    # Construct and display table
-                    if json_data:
-                        print("Here is the json data-------",json_data)
-                        
-                        # Ensure json_data is a list
-                        if isinstance(json_data, dict):
-                            json_data = [json_data]
-                        elif not isinstance(json_data, list):
-                            json_data = [json_data]
-                        df = pd.DataFrame(json_data)
-                        st.subheader("📊 Risk Assessment Analysis")
-                        st.dataframe(df, use_container_width=True, hide_index=True)
-                        output = f"Retrieved {len(json_data)} risk assessment records"
+                    if tool_name == "get_chemical_details":
+                        table_data=get_chemical_details(user_query)
+                        output=chemical_output(table_data=table_data,query=user_query)
+                    elif tool_name == "get_regulations_data":
+                        regulations_docs=get_regulations_data(user_query)
+                        output=regulations_output(regulations_docs=regulations_docs,query=user_query)
+                    elif tool_name == "get_accident_records":
+                        accident_docs=get_accident_records(user_query)
+                        output=accident_output(accident_docs=accident_docs,query=user_query)
+                    elif tool_name == "get_risk_assessment":
+                        risk_assessment_docs=get_risk_assessment(user_query)
+                        if "table" in user_query.lower():
+                            output=risk_assessment_docs
+                            json_data=risk_assessment_table_output(risk_assessment_docs=risk_assessment_docs,query=user_query)
+                            if json_data:
+                                print("Here is the json data-------",json_data)
+                                
+                                # Ensure json_data is a list
+                                if isinstance(json_data, dict):
+                                    json_data = [json_data]
+                                elif not isinstance(json_data, list):
+                                    json_data = [json_data]
+                                df = pd.DataFrame(json_data)
+                                st.subheader("📊 Risk Assessment Analysis")
+                                st.dataframe(df, use_container_width=True, hide_index=True)
+                                output = f"Retrieved {len(json_data)} risk assessment records"
+                            else:
+                                st.error("No valid risk assessment data to display")
+                                output = "Error processing risk assessment data"
+                        else:
+                            output=risk_assessment_output(risk_assessment_docs=risk_assessment_docs,query=user_query)
                     else:
-                        st.error("No valid risk assessment data to display")
-                        output = "Error processing risk assessment data"
+                        # Handle unknown tool
+                        output = f"Unknown tool: {tool_name}"
+                    
+                    # Add tool result to messages
+                    from langchain_core.messages import ToolMessage
+                    tool_message = ToolMessage(content=output, tool_call_id=tool_call["id"])
+                    messages.append(tool_message)
                 
+                # Get next AI response
+                ai_msg = llm_with_tools.invoke(messages)
+                messages.append(ai_msg)
 
-                    #tool_msg = selected_tool.invoke(tool_call)
-                #     messages.append(tool_msg)
-                #     with st.expander(tool_msg.tool_call_id,icon='📖'):
-                #         st.write(tool_msg.content)
-                # ai_msg = llm_with_tools.invoke(messages)
-                messages.append(output)
-
-            answer = output
+            # Display final answer
+            answer = ai_msg.content if ai_msg.content else output
             st.markdown(answer)
             st.session_state.chat_history.extend(messages)
