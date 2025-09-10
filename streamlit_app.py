@@ -293,7 +293,6 @@ if user_query := st.chat_input("Ask a question about chemical usage, accidents, 
                             json_data = [json_data]
                         elif not isinstance(json_data, list):
                             json_data = [json_data]
-                        
                         df = pd.DataFrame(json_data)
                         st.subheader("📊 Risk Assessment Analysis")
                         st.dataframe(df, use_container_width=True, hide_index=True)
