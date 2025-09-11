@@ -69,8 +69,31 @@ def accident_output(accident_docs,query):
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
     response = client.responses.create(
-            model="gpt-4.1-nano",
-            instructions=f"You are a helpful assistant.From this data give the user information {accident_docs}. From the collected docs table carefully extract the accident records relevant to the query entered by the user",
+            model="gpt-4.1-mini",
+            temperature=0.2,
+            instructions=(
+                "You are an industrial safety analyst specializing in accident prevention. "
+                f"From the provided accident data {accident_docs}, extract only the information relevant to the user query. "
+                "Then, analyze potential incidents and generate a comprehensive risk profile in the following exact format:\n\n"
+                "INCIDENT RISK PROFILE:\n"
+                "- Similar Historical Incidents: [search accident database patterns]\n"
+                "- Probability Assessment:\n"
+                "  * Base rate from historical data: [%]\n"
+                "  * Adjusted for current conditions: [1-5 scale]\n"
+                "- Potential Severity Outcomes:\n"
+                "  * Most likely scenario: [severity 1-4]\n"
+                "  * Worst case scenario: [severity 1-4]\n"
+                "- Critical Control Points: [specific moments/actions where incidents typically occur]\n"
+                "- Leading Indicators to Monitor: [measurable precursors]\n"
+                "- Recommended Safety Barriers: [prevention and mitigation layers]\n\n"
+                "Requirements:\n"
+                "• Provide confidence levels (High/Medium/Low) for each assessment based on data availability.\n"
+                "• If specific accident data is not found, indicate 'No relevant historical data available'.\n"
+                "• Focus on actionable insights and preventive measures.\n"
+                "• Include specific accident patterns, causes, and lessons learned when available.\n"
+                "• Ensure outputs are technically accurate, concise, and actionable.\n"
+                "• If the user query is in Korean language, provide the output in Korean language."
+            ),
             input=query,
         )
     return response.output_text
@@ -120,7 +143,7 @@ def risk_assessment_table_output(risk_assessment_docs, query):
     
     # Create structured prompt for JSON output
     json_instructions = f"""
-You are a Risk Assessment Assistant. Your task is to analyze the provided risk assessment documents: {risk_assessment_docs}
+You are a safety engineering expert specializing in industrial risk assessments. Your task is to analyze the provided risk assessment documents: {risk_assessment_docs}
 
 Instructions:
 - Always return the output in strict JSON format.
@@ -130,25 +153,34 @@ Instructions:
 - Do not include explanations, extra text, or markdown—only JSON.
 - Provide whole table 
 - If the user query is in korean language then provide the output table in korean language
+- Extract only the information relevant to the user query
+- Generate a comprehensive risk assessment with the specified format
 
 Output Format:
 [
   {{
+    "Task/Process Name": "Specific work being performed or N/A",
     "Hazard Factor": "Description of the hazard",
-    "Current Frequency": "Low/Medium/High or N/A",
-    "Current Severity": "Low/Medium/High or N/A",
-    "Current Risk": "Low/Medium/High or N/A",
+    "Hazard Identification": "List of 3-5 specific hazards or N/A",
+    "Current Frequency": "Low/Medium/High or 1-5 scale or N/A",
+    "Current Severity": "Low/Medium/High or 1-4 scale or N/A",
+    "Current Risk": "Low/Medium/High or Risk Score or N/A",
+    "Current Risk Level": "Frequency (1-5) x Severity (1-4) = Risk Score or N/A",
+    "Root Causes": "Underlying reasons for each hazard or N/A",
     "Current Measures": "Existing safety measures or N/A",
+    "Control Measures": "Specific preventive/protective actions or N/A",
     "Reduction Measures": "Proposed reduction measures or N/A",
-    "Improved Frequency": "Low/Medium/High or N/A",
-    "Improved Severity": "Low/Medium/High or N/A",
-    "Improved Risk": "Low/Medium/High or N/A"
+    "Improved Frequency": "Low/Medium/High or 1-5 scale or N/A",
+    "Improved Severity": "Low/Medium/High or 1-4 scale or N/A",
+    "Improved Risk": "Low/Medium/High or Risk Score or N/A",
+    "Residual Risk After Controls": "New Frequency x New Severity = New Risk Score or N/A"
   }}
 ]"""
 
     try:
         response = client.chat.completions.create(
             model="gpt-4.1-mini",
+            temperature=0.2,
             messages=[{"role": "system", "content": json_instructions},
                       {"role": "user", "content": query}],
             response_format={"type": "json_object"}
@@ -161,23 +193,47 @@ Output Format:
         print(f"Error in risk_assessment_output: {e}")
         # Return error structure if JSON parsing fails
         return [{
+            "Task/Process Name": "Error parsing data",
             "Hazard Factor": "Error parsing data",
+            "Hazard Identification": "N/A",
             "Current Frequency": "N/A",
             "Current Severity": "N/A",
             "Current Risk": "N/A",
+            "Current Risk Level": "N/A",
+            "Root Causes": "N/A",
             "Current Measures": "N/A",
+            "Control Measures": "N/A",
             "Reduction Measures": "N/A",
             "Improved Frequency": "N/A",
             "Improved Severity": "N/A",
-            "Improved Risk": "N/A"
+            "Improved Risk": "N/A",
+            "Residual Risk After Controls": "N/A"
         }]
 
 def risk_assessment_output(risk_assessment_docs, query):
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
     response = client.responses.create(
-        model="gpt-4.1-nano",
-        instructions=f"You are a helpful assistant.From this data give the user information {risk_assessment_docs}. From the collected docs table carefully extract the relevant information for the query entered by the user",
-        input=query,)
+        model="gpt-4.1-mini",
+        temperature=0.2,
+        instructions=(
+            "You are a safety engineering expert specializing in industrial risk assessments. "
+            f"From the provided {risk_assessment_docs}, extract only the information relevant to the user query. "
+            "Then, generate a comprehensive risk assessment in the following exact format:\n\n"
+            "- Task/Process Name: [specific work being performed]\n"
+            "- Hazard Identification: [list 3–5 specific hazards]\n"
+            "- Current Risk Level: [Frequency (1–5)] x [Severity (1–4)] = [Risk Score]\n"
+            "- Root Causes: [underlying reasons for each hazard]\n"
+            "- Control Measures: [specific preventive/protective actions]\n"
+            "- Residual Risk After Controls: [new Frequency] x [new Severity] = [new Risk Score]\n\n"
+            "Requirements:\n"
+            "• Always cite relevant safety regulations (e.g., KOSHA, ISO 45001).\n"
+            "• Include specific MSDS data when chemicals are involved.\n"
+            "• Ensure outputs are technically accurate, concise, and actionable."
+            "• If the user query is in Korean language, provide the output in Korean language."
+        ),
+        input=query,
+    )
     return response.output_text
 
 @tool
@@ -188,7 +244,7 @@ def get_chemical_details(query:str):
     """
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
     response = client.responses.create(
-        model="gpt-4.1-nano",
+        model="gpt-4.1-mini",
         instructions="You are a helpful chemical identifier assistant. Your job is to identify the chemical name only and return me only chemical name single word, Response: Only one word chemical name, if no chemical name is avilable then return 'none'",
         input=query
     )
@@ -206,15 +262,33 @@ def get_chemical_details(query:str):
         else:
             return None
 
-def chemical_output(table_data,query):
+def chemical_output(table_data, query):
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
     response = client.responses.create(
-            model="gpt-4.1-nano",
-            instructions=f"You are a helpful assistant.From this data give the user information {table_data}. From this table carefully extract casNo,chemId,chemNameKor,enNo, KeNO,lastDate,unNo and is it Kosha Confirmed or not for the given Chemimal name entered by the user",
-            input=query,
-        )
+        model="gpt-4.1-mini",
+        instructions=(
+            "You are a chemical safety specialist with expertise in MSDS interpretation. "
+            f"From the provided table data {table_data}, first extract and present only these fields if available: "
+            "casNo, chemId, chemNameKor, enNo, KeNO, lastDate, unNo, and Kosha confirmation status. "
+            "Then, using the extracted chemical data and the user query, generate a structured "
+            "CHEMICAL RISK ASSESSMENT with the following sections:\n\n"
+            "1. Chemical Properties & Hazards\n"
+            "   - Physical hazards (fire, explosion, reactivity) with frequency (1–5) and severity (1–4)\n"
+            "   - Health hazards (acute/chronic effects) with frequency and severity\n"
+            "   - Environmental hazards with frequency and severity\n"
+            "2. Likely Exposure Scenarios in the specified work context\n"
+            "3. PPE Matrix (detailing equipment per exposure route), (not necessary if not available)\n"
+            "4. Emergency Response Procedures\n"
+            "5. Risk Mitigation Hierarchy (elimination → substitution → engineering → administrative → PPE)\n\n"
+            "Reference relevant safety regulations where applicable. "
+            "Keep the output structured, precise, and actionable."
+            " If the user query is in Korean language, provide the output in Korean language."
+        ),
+        input=query,
+    )
     return response.output_text
+
 
 @tool
 def get_regulations_data(query: str) -> str:
@@ -240,8 +314,35 @@ def regulations_output(regulations_docs,query):
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
     response = client.responses.create(
-            model="gpt-4.1-nano",
-            instructions=f"You are a helpful assistant.From this data give the user information {regulations_docs}. From the collected docs table carefully extract the relevants rules relevant to the query entered by the user",
+            model="gpt-4.1-mini",
+            temperature=0.2,
+            instructions=(
+                "You are a safety compliance expert familiar with Korean industrial safety regulations. "
+                f"From the provided data {regulations_docs}, extract only the information relevant to the user query. "
+                "Then, generate a comprehensive compliance assessment in the following exact format:\n\n"
+                "COMPLIANCE ASSESSMENT OUTPUT:\n"
+                "1. Applicable Regulations:\n"
+                "   - Primary: [specific act/regulation with article numbers]\n"
+                "   - Secondary: [related standards and codes]\n"
+                "2. Mandatory Requirements:\n"
+                "   - Documentation needed\n"
+                "   - Permits/certifications required\n"
+                "   - Training prerequisites\n"
+                "   - Safety equipment specifications\n"
+                "3. Compliance Gaps Analysis:\n"
+                "   - Current status vs. requirements\n"
+                "   - Risk level if non-compliant [1-5 frequency] x [1-4 severity]\n"
+                "4. Remediation Priority:\n"
+                "   - Immediate actions (legal must-dos)\n"
+                "   - Short-term improvements (1-30 days)\n"
+                "   - Long-term enhancements (30+ days)\n\n"
+                "Requirements:\n"
+                "• Always cite specific Korean safety regulations (KOSHA, Industrial Safety and Health Act, etc.) with article numbers when available.\n"
+                "• If specific regulations are not found in the data, indicate 'Not specified in available data'.\n"
+                "• Format as actionable checklist with specific deadlines and responsible parties when information is available.\n"
+                "• Ensure outputs are technically accurate, concise, and actionable.\n"
+                "• If the user query is in Korean language, provide the output in Korean language."
+            ),
             input=query,
         )
     return response.output_text
