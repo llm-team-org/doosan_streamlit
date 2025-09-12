@@ -51,7 +51,7 @@ def get_accident_records(query: str) -> str:
     Retrieves accident records and safety incident information from company documents.
     Use this tool for questions about workplace accidents, safety incidents, injuries, or safety violations.
     Supports both English and Korean queries.
-    Example queries: '사고 기록', 'accident records', '안전 사고', 'workplace injuries', '사고 보고서', 'safety incidents'.
+    Example queries: '사고 기록', 'accident records', '안전 사고', 'workplace injuries', '사고 보고서', 'safety incidents', 'accident analysis', ''.
     """
     retrieved_docs = st.session_state.client.query_points(
         collection_name="doosan_accident_records",
@@ -124,7 +124,7 @@ def get_risk_assessment(query: str) -> str:
     Retrieves risk assessment and safety evaluation information from company documents.
     Use this tool for questions about risk analysis, safety assessments, hazard identification, risk levels, or safety measures.
     Supports both English and Korean queries.
-    Example queries: '위험 평가', 'risk assessment', '안전 평가', 'safety evaluation', '위험 분석', 'hazard analysis', '위험도 평가'.
+    Example queries: '위험 평가', 'risk assessment', '안전 평가', 'safety evaluation', '위험 분석', 'hazard analysis', '위험도 평가', 'risk assessment table'.
     """
     retrieved_docs = st.session_state.client.query_points(
         collection_name="doosan_risk_assessment",
@@ -310,6 +310,26 @@ def get_regulations_data(query: str) -> str:
     docs = [doc.payload['text'] for doc in retrieved_docs.points]
     return "\n\n".join(docs)
 
+@tool
+def dynamic_risk_assessment(query: str) -> str:
+    """
+    Performs dynamic risk assessment using historical risk assessment data and provides comprehensive risk scoring.
+    Use this tool for dynamic risk analysis, risk scoring, hazard assessment, or safety evaluation of new risks.
+    Supports both English and Korean queries.
+    Example queries: 'dynamic risk assessment','dynamic risk analysis','빈도×심각도', today risk analysis', 'risk scoring','위험도 점수', 'yesterday risk analysis', 'dynamic hazard analysis', 'safety evaluation', '위험도 평가', '동적 위험 평가', '안전 평가', '계산해주세요'.
+    """
+    retrieved_docs = st.session_state.client.query_points(
+        collection_name="doosan_risk_assessment",
+        query=models.Document(
+            text=query,
+            model="Qdrant/minicoil-v1"
+        ),
+        using="minicoil",
+        limit=5
+    )
+    docs = [doc.payload['text'] for doc in retrieved_docs.points]
+    return "\n\n".join(docs)
+
 def regulations_output(regulations_docs,query):
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
@@ -347,8 +367,45 @@ def regulations_output(regulations_docs,query):
         )
     return response.output_text
 
-tool_dict = {"get_accident_records":get_accident_records,"get_chemical_usage":get_chemical_usage,"get_risk_assessment":get_risk_assessment,"get_regulations_data":get_regulations_data,"get_chemical_details":get_chemical_details}
-tools = [get_accident_records,get_chemical_usage,get_risk_assessment,get_regulations_data,get_chemical_details]
+def dynamic_risk_assessment_output(risk_assessment_docs, query):
+    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+    response = client.responses.create(
+        model="gpt-4.1-mini",
+        temperature=0.2,
+        instructions=(
+            "You are an AI risk assessment engine trained on industrial safety data. Calculate dynamic risk scores using this multi-factor model:\n"
+            f"From the provided risk assessment data: {risk_assessment_docs}\n\n if no risk assessment data is available then provide the output through your knowledge in the following format:\n"
+            "CALCULATE RISK SCORE:\n"
+            "Base Risk Factors:\n"
+            "- Task complexity factor (1.0-2.0)\n"
+            "- Environmental conditions modifier (0.8-1.5)\n"
+            "- Worker experience level adjustment (0.7-1.3)\n"
+            "- Time pressure multiplier (1.0-1.5)\n"
+            "For Each Identified Hazard:\n"
+            "- Frequency Score: [1-5 with rationale]\n"
+            "- Severity Score: [1-4 with rationale]\n"
+            "- Detection Difficulty: [Easy/Moderate/Hard]\n"
+            "- Control Effectiveness: [percentage reduction]\n"
+            "Final Output:\n"
+            "- Inherent Risk Score: [calculation shown]\n"
+            "- Residual Risk Score: [after controls]\n"
+            "- Confidence Level: [High/Medium/Low based on data quality]\n"
+            "- Recommended Review Frequency: [Daily/Weekly/Monthly]\n"
+            "Provide specific justification for each score based on empirical data or established safety principles.\n\n"
+            "Requirements:\n"
+            "• If no relevant documents are found in the collection, still provide a comprehensive risk assessment using established safety principles.\n"
+            "• Always provide specific justification for each score based on available data or industry standards.\n"
+            "• Include confidence levels based on data quality and availability.\n"
+            "• Ensure outputs are technically accurate, concise, and actionable.\n"
+            "• If the user query is in Korean language, provide the output in Korean language."
+        ),
+        input=query,
+    )
+    return response.output_text
+
+tool_dict = {"get_accident_records":get_accident_records,"get_chemical_usage":get_chemical_usage,"get_risk_assessment":get_risk_assessment,"get_regulations_data":get_regulations_data,"get_chemical_details":get_chemical_details,"dynamic_risk_assessment":dynamic_risk_assessment}
+tools = [get_accident_records,get_chemical_usage,get_risk_assessment,get_regulations_data,get_chemical_details,dynamic_risk_assessment]
 llm_with_tools = llm.bind_tools(tools=tools)
 
 st.title("DOOSAN RISK MANAGEMENT AI Chatbot 📄")
@@ -417,6 +474,9 @@ if user_query := st.chat_input("Ask a question about chemical usage, accidents, 
                                 output = "Error processing risk assessment data"
                         else:
                             output=risk_assessment_output(risk_assessment_docs=risk_assessment_docs,query=user_query)
+                    elif tool_name == "dynamic_risk_assessment":
+                        risk_assessment_docs=dynamic_risk_assessment(user_query)
+                        output=dynamic_risk_assessment_output(risk_assessment_docs=risk_assessment_docs,query=user_query)
                     else:
                         # Handle unknown tool
                         output = f"Unknown tool: {tool_name}"
