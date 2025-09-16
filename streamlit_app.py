@@ -460,6 +460,44 @@ st.title("DOOSAN RISK MANAGEMENT AI Chatbot 📄")
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 
+# Simple chat history for conversation context
+if "conversation_history" not in st.session_state:
+    st.session_state.conversation_history = []
+
+# Sidebar for chat history
+with st.sidebar:
+    st.header("💬 Chat History")
+    
+    # Show recent conversations
+    if st.session_state.conversation_history:
+        st.subheader("Recent Conversations")
+        for i, conv in enumerate(st.session_state.conversation_history[-5:]):  # Show last 5
+            with st.expander(f"Chat {len(st.session_state.conversation_history) - 4 + i}", expanded=False):
+                st.write(f"**User:** {conv['User']}")
+                st.write(f"**AI:** {conv['AI'][:100]}...")  # Truncated for sidebar
+    
+    # Clear chat history button
+    if st.button("🗑️ Clear Chat History", type="secondary"):
+        st.session_state.conversation_history = []
+        st.session_state.chat_history = []
+        st.rerun()
+    
+    # Show total conversations
+    st.metric("Total Conversations", len(st.session_state.conversation_history))
+
+# Main chat area with background conversation history
+col1, col2 = st.columns([3, 1])
+
+with col1:
+    # Display current conversation in background
+    if st.session_state.conversation_history:
+        with st.expander("📚 Previous Conversations (Background Context)", expanded=False):
+            for i, conv in enumerate(st.session_state.conversation_history):
+                st.write(f"**Conversation {i+1}:**")
+                st.write(f"👤 **User:** {conv['User']}")
+                st.write(f"🤖 **AI:** {conv['AI'][:300]}{'...' if len(conv['AI']) > 300 else ''}")
+                st.write("---")
+
 # for message in st.session_state.chat_history:
 #     if message:
 #         print("Here is messages tools--------",message)
@@ -476,7 +514,15 @@ if user_query := st.chat_input("Ask a question about chemical usage, accidents, 
 
     with st.chat_message("ai"):
         with st.spinner("Thinking..."):
-            messages = [HumanMessage(user_query)]
+            # Build context with recent chat history
+            context_query = user_query
+            if st.session_state.conversation_history:
+                # Get the last 3 conversations for context
+                recent_history = st.session_state.conversation_history[-3:] if len(st.session_state.conversation_history) >= 3 else st.session_state.conversation_history
+                history_context = "\n".join([f"Previous: User: {h['User']} | AI: {h['AI'][:200]}..." for h in recent_history])
+                context_query = f"Previous conversation context:\n{history_context}\n\nCurrent query: {user_query}"
+            
+            messages = [HumanMessage(context_query)]
             ai_msg = llm_with_tools.invoke(messages)
             print(ai_msg)
             messages.append(ai_msg)
@@ -544,3 +590,7 @@ if user_query := st.chat_input("Ask a question about chemical usage, accidents, 
             answer = ai_msg.content if ai_msg.content else output
             st.markdown(answer)
             st.session_state.chat_history.extend(messages)
+            
+            # Add to conversation history
+            history = {"User": user_query, "AI": answer}
+            st.session_state.conversation_history.append(history)

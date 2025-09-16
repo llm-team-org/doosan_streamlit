@@ -35,6 +35,9 @@ from langchain_core.messages import HumanMessage, ToolMessage
 
 load_dotenv()
 
+# Global chat history storage (in production, use a database)
+chat_history = []
+
 # Initialize FastAPI app
 app = FastAPI(
     title="DOOSAN Risk Management AI API",
@@ -42,14 +45,6 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Add CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Configure this for production
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 # Pydantic models
 class QueryRequest(BaseModel):
@@ -59,6 +54,7 @@ class QueryResponse(BaseModel):
     result: str
     tool_used: str
     success: bool
+    chat_history: List[Dict[str, str]]
 
 class RiskAssessmentTableResponse(BaseModel):
     data: List[Dict[str, Any]]
@@ -194,7 +190,20 @@ async def query_endpoint(request: QueryRequest):
     Main query endpoint that processes user queries and returns AI responses
     """
     try:
-        messages = [HumanMessage(request.query)]
+        # Initialize chat history if None
+        global chat_history
+        if chat_history is None:
+            chat_history = []
+        
+        # Build context with recent chat history
+        context_query = request.query
+        if chat_history:
+            # Get the last 3 conversations for context
+            recent_history = chat_history[-3:] if len(chat_history) >= 3 else chat_history
+            history_context = "\n".join([f"Previous: User: {h['User']} | AI: {h['AI']}" for h in recent_history])
+            context_query = f"Previous conversation context:\n{history_context}\n\nCurrent query: {request.query}"
+        
+        messages = [HumanMessage(context_query)]
         ai_msg = llm_with_tools.invoke(messages)
         messages.append(ai_msg)
         
@@ -241,10 +250,15 @@ async def query_endpoint(request: QueryRequest):
         # Get final answer
         answer = ai_msg.content if ai_msg.content else output
         
+        # Add to chat history
+        history = {"User": request.query, "AI": answer}
+        chat_history.append(history)
+        
         return QueryResponse(
             result=answer,
             tool_used=tool_used,
-            success=True
+            success=True,
+            chat_history=chat_history
         )
         
     except Exception as e:
@@ -281,7 +295,34 @@ async def risk_assessment_table_endpoint(request: QueryRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing risk assessment table: {str(e)}")
 
+@app.get("/chat-history")
+async def get_chat_history():
+    """
+    Get the current chat history
+    """
+    try:
+        global chat_history
+        if chat_history is None:
+            chat_history = []
+        return {
+            "chat_history": chat_history,
+            "success": True,
+            "message": f"Retrieved {len(chat_history)} chat messages"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error retrieving chat history: {str(e)}")
 
+@app.delete("/chat-history")
+async def clear_chat_history():
+    """
+    Clear the chat history
+    """
+    try:
+        global chat_history
+        chat_history = []
+        return {"message": "Chat history cleared successfully", "success": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error clearing chat history: {str(e)}")
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
