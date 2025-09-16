@@ -6,15 +6,17 @@ import xml.etree.ElementTree as ET
 from tabulate import tabulate
 import requests
 from openai import OpenAI
-from langchain_openai import ChatOpenAI
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_core.tools import tool
 from langchain_core.messages import HumanMessage
+from langchain_qdrant import QdrantVectorStore
 from dotenv import load_dotenv
 import json
 import pandas as pd
 load_dotenv()
 
 llm = ChatOpenAI(model="gpt-4.1", temperature=0,api_key=os.getenv("OPENAI_API_KEY"))
+embeddings = OpenAIEmbeddings(openai_api_key=os.getenv("OPENAI_API_KEY"), model="text-embedding-3-large")
 
 
 if "client" not in st.session_state:
@@ -106,17 +108,31 @@ def get_chemical_usage(query: str) -> str:
     Supports both English and Korean queries.
     Example queries: '화학 물질 사용', 'chemical usage', '화학 안전', 'chemical safety', 'MSDS', '화학 물질 안전보건자료'.
     """
-    retrieved_docs = st.session_state.client.query_points(
-        collection_name="doosan_chemical_usage",
-        query=models.Document(
-            text=query,
-            model="Qdrant/minicoil-v1"
-        ),
-        using="minicoil",
-        limit=5
+    # retrieved_docs = st.session_state.client.query_points(
+    #     collection_name="doosan-chemical-openai",
+    #     query=models.Document(
+    #         text=query,
+    #         model=embeddings  
+    #     ),
+    #     limit=5
+    # )
+    qdrant = QdrantVectorStore.from_existing_collection(
+    embedding=embeddings,
+    collection_name="doosan-chemical-openai",
+    url=os.getenv("QDRANT_URL"),
+    api_key=os.getenv("QDRANT_API_KEY"),
+    port=None,
+    timeout=120
     )
-    docs = [doc.payload['text'] for doc in retrieved_docs.points]
-    return "\n\n".join(docs)
+    retriever = qdrant.as_retriever(search_kwargs={"k": 30})
+    retrieved_docs = retriever.invoke(query)
+    print("retrieved_docs",retrieved_docs)
+
+    # docs = [doc.payload['text'] for doc in retrieved_docs.points]
+    # print("docs",docs)
+    # return "\n\n".join(docs)
+    return retrieved_docs
+
 
 @tool
 def get_risk_assessment(query: str) -> str:
@@ -125,18 +141,29 @@ def get_risk_assessment(query: str) -> str:
     Use this tool for questions about risk analysis, safety assessments, hazard identification, risk levels, or safety measures.
     Supports both English and Korean queries.
     Example queries: '위험 평가', 'risk assessment', '안전 평가', 'safety evaluation', '위험 분석', 'hazard analysis', '위험도 평가', 'risk assessment table'.
-    """
-    retrieved_docs = st.session_state.client.query_points(
-        collection_name="doosan_risk_assessment",
-        query=models.Document(
-            text=query,
-            model="Qdrant/minicoil-v1"
-        ),
-        using="minicoil",
-        limit=5
+    # """
+
+    # retrieved_docs = st.session_state.client.query_points(
+    #     collection_name="doosan-risk-new",
+    #     query=models.Document(
+    #         text=query,
+    #         model=embeddings
+    #     ),
+    #     limit=5
+    # )
+    qdrant = QdrantVectorStore.from_existing_collection(
+    embedding=embeddings,
+    collection_name="doosan-risk-new",
+    url=os.getenv("QDRANT_URL"),
+    api_key=os.getenv("QDRANT_API_KEY"),
+    port=None,
+    timeout=120
     )
-    docs = [doc.payload['text'] for doc in retrieved_docs.points]
-    return "\n\n".join(docs)
+    retriever = qdrant.as_retriever(search_kwargs={"k": 30})
+    retrieved_docs = retriever.invoke(query)
+    print("retrieved_docs",retrieved_docs)
+    # docs = [doc.payload['text'] for doc in retrieved_docs.points]
+    return retrieved_docs
 
 def risk_assessment_table_output(risk_assessment_docs, query):
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -298,17 +325,28 @@ def get_regulations_data(query: str) -> str:
     Supports both English and Korean queries.
     Example queries: '규정', 'regulations', '법규', 'legal requirements', '준수 사항', 'compliance', '컴플라이언스', 'safety standards'.
     """
-    retrieved_docs = st.session_state.client.query_points(
-        collection_name="doosan_regulations_data",
-        query=models.Document(
-            text=query,
-            model="Qdrant/minicoil-v1"
-        ),
-        using="minicoil",
-        limit=5
+    # retrieved_docs = st.session_state.client.query_points(
+    #     collection_name="rules-and-regulations-new",
+    #     query=models.Document(
+    #         text=query,
+    #         model=embeddings
+    #     ),
+    #     limit=5
+    # )
+    # print("retrieved_docs",retrieved_docs.points)
+    # docs = [doc.payload['text'] for doc in retrieved_docs.points]
+    # print("docs",docs)
+    qdrant = QdrantVectorStore.from_existing_collection(
+    embedding=embeddings,
+    collection_name="rules-and-regulations-new",
+    url=os.getenv("QDRANT_URL"),
+    api_key=os.getenv("QDRANT_API_KEY"),
+    port=None,
+    timeout=120
     )
-    docs = [doc.payload['text'] for doc in retrieved_docs.points]
-    return "\n\n".join(docs)
+    retriever = qdrant.as_retriever(search_kwargs={"k": 30})
+    retrieved_docs = retriever.invoke(query)
+    return retrieved_docs
 
 @tool
 def dynamic_risk_assessment(query: str) -> str:
@@ -318,17 +356,26 @@ def dynamic_risk_assessment(query: str) -> str:
     Supports both English and Korean queries.
     Example queries: 'dynamic risk assessment','dynamic risk analysis','빈도×심각도', today risk analysis', 'risk scoring','위험도 점수', 'yesterday risk analysis', 'dynamic hazard analysis', 'safety evaluation', '위험도 평가', '동적 위험 평가', '안전 평가', '계산해주세요'.
     """
-    retrieved_docs = st.session_state.client.query_points(
-        collection_name="doosan_risk_assessment",
-        query=models.Document(
-            text=query,
-            model="Qdrant/minicoil-v1"
-        ),
-        using="minicoil",
-        limit=5
+    # retrieved_docs = st.session_state.client.query_points(
+    #     collection_name="doosan-risk-new",
+    #     query=models.Document(
+    #         text=query,
+    #         model=embeddings
+    #     ),  
+    #     limit=5
+    # )
+    qdrant = QdrantVectorStore.from_existing_collection(
+    embedding=embeddings,
+    collection_name="doosan-risk-new",
+    url=os.getenv("QDRANT_URL"),
+    api_key=os.getenv("QDRANT_API_KEY"),
+    port=None,
+    timeout=120
     )
-    docs = [doc.payload['text'] for doc in retrieved_docs.points]
-    return "\n\n".join(docs)
+    retriever = qdrant.as_retriever(search_kwargs={"k": 30})
+    retrieved_docs = retriever.invoke(query)
+    print("retrieved_docs",retrieved_docs)
+    return retrieved_docs
 
 def regulations_output(regulations_docs,query):
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -447,6 +494,9 @@ if user_query := st.chat_input("Ask a question about chemical usage, accidents, 
                     if tool_name == "get_chemical_details":
                         table_data=get_chemical_details(user_query)
                         output=chemical_output(table_data=table_data,query=user_query)
+                    elif tool_name == "get_chemical_usage":
+                        chemical_usage_docs=get_chemical_usage(user_query)
+                        output=chemical_output(table_data=chemical_usage_docs,query=user_query)
                     elif tool_name == "get_regulations_data":
                         regulations_docs=get_regulations_data(user_query)
                         output=regulations_output(regulations_docs=regulations_docs,query=user_query)

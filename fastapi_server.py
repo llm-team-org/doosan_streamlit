@@ -65,10 +65,124 @@ class RiskAssessmentTableResponse(BaseModel):
     success: bool
     message: str
 
+class ToolResponse(BaseModel):
+    data: Any
+    success: bool
+    message: str
+    tool_name: str
+
 # API Endpoints
 @app.get("/")
 async def root():
     return {"message": "DOOSAN Risk Management AI API", "version": "1.0.0"}
+
+# Individual Tool Endpoints
+@app.post("/tools/accident-records", response_model=ToolResponse)
+async def get_accident_records_endpoint(request: QueryRequest):
+    """
+    Individual endpoint for getting accident records
+    """
+    try:
+        accident_docs = get_accident_records(request.query)
+        output = accident_output(accident_docs=accident_docs, query=request.query)
+        
+        return ToolResponse(
+            data=output,
+            success=True,
+            message="Accident records retrieved successfully",
+            tool_name="get_accident_records"
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error retrieving accident records: {str(e)}")
+
+@app.post("/tools/chemical-usage", response_model=ToolResponse)
+async def get_chemical_usage_endpoint(request: QueryRequest):
+    """
+    Individual endpoint for getting chemical usage data
+    """
+    try:
+        chemical_data = get_chemical_usage(request.query)
+        # Note: You may need to add a chemical_usage_output function similar to other output functions
+        return ToolResponse(
+            data=chemical_data,
+            success=True,
+            message="Chemical usage data retrieved successfully",
+            tool_name="get_chemical_usage"
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error retrieving chemical usage: {str(e)}")
+
+@app.post("/tools/risk-assessment", response_model=ToolResponse)
+async def get_risk_assessment_endpoint(request: QueryRequest):
+    """
+    Individual endpoint for getting risk assessment data
+    """
+    try:
+        risk_assessment_docs = get_risk_assessment(request.query)
+        output = risk_assessment_output(risk_assessment_docs=risk_assessment_docs, query=request.query)
+        
+        return ToolResponse(
+            data=output,
+            success=True,
+            message="Risk assessment data retrieved successfully",
+            tool_name="get_risk_assessment"
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error retrieving risk assessment: {str(e)}")
+
+@app.post("/tools/regulations", response_model=ToolResponse)
+async def get_regulations_data_endpoint(request: QueryRequest):
+    """
+    Individual endpoint for getting regulations data
+    """
+    try:
+        regulations_docs = get_regulations_data(request.query)
+        output = regulations_output(regulations_docs=regulations_docs, query=request.query)
+        
+        return ToolResponse(
+            data=output,
+            success=True,
+            message="Regulations data retrieved successfully",
+            tool_name="get_regulations_data"
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error retrieving regulations data: {str(e)}")
+
+@app.post("/tools/chemical-details", response_model=ToolResponse)
+async def get_chemical_details_endpoint(request: QueryRequest):
+    """
+    Individual endpoint for getting chemical details
+    """
+    try:
+        table_data = get_chemical_details(request.query)
+        output = chemical_output(table_data=table_data, query=request.query)
+        
+        return ToolResponse(
+            data=output,
+            success=True,
+            message="Chemical details retrieved successfully",
+            tool_name="get_chemical_details"
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error retrieving chemical details: {str(e)}")
+
+@app.post("/tools/dynamic-risk-assessment", response_model=ToolResponse)
+async def dynamic_risk_assessment_endpoint(request: QueryRequest):
+    """
+    Individual endpoint for dynamic risk assessment
+    """
+    try:
+        risk_assessment_docs = dynamic_risk_assessment(request.query)
+        output = dynamic_risk_assessment_output(risk_assessment_docs=risk_assessment_docs, query=request.query)
+        
+        return ToolResponse(
+            data=output,
+            success=True,
+            message="Dynamic risk assessment completed successfully",
+            tool_name="dynamic_risk_assessment"
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error performing dynamic risk assessment: {str(e)}")
 
 @app.get("/health")
 async def health_check():
