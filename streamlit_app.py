@@ -55,17 +55,33 @@ def get_accident_records(query: str) -> str:
     Supports both English and Korean queries.
     Example queries: '사고 기록', 'accident records', '안전 사고', 'workplace injuries', '사고 보고서', 'safety incidents', 'accident analysis', ''.
     """
-    retrieved_docs = st.session_state.client.query_points(
-        collection_name="doosan_accident_records",
-        query=models.Document(
-            text=query,
-            model="Qdrant/minicoil-v1"
-        ),
-        using="minicoil",
-        limit=5
+    # retrieved_docs = st.session_state.client.query_points(
+    #     collection_name="doosan_accident_records",
+    #     query=models.Document(
+    #         text=query,
+    #         model="Qdrant/minicoil-v1"
+    #     ),
+    #     using="minicoil",
+    #     limit=5
+    # )
+    # docs = [doc.payload['text'] for doc in retrieved_docs.points]
+    qdrant = QdrantVectorStore.from_existing_collection(
+    embedding=embeddings,
+    collection_name="doosan-accidents-new",
+    url=os.getenv("QDRANT_URL"),
+    api_key=os.getenv("QDRANT_API_KEY"),
+    port=None,
+    timeout=120
     )
-    docs = [doc.payload['text'] for doc in retrieved_docs.points]
-    return "\n\n".join(docs)
+    retriever = qdrant.as_retriever(search_kwargs={"k": 30})
+    retrieved_docs = retriever.invoke(query)
+    print("retrieved_docs",retrieved_docs)
+
+    # docs = [doc.payload['text'] for doc in retrieved_docs.points]
+    # print("docs",docs)
+    # return "\n\n".join(docs)
+    return retrieved_docs
+
 
 def accident_output(accident_docs,query):
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
