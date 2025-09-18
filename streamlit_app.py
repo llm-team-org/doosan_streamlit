@@ -1,3 +1,4 @@
+#Javeria
 import os
 import streamlit as st
 from qdrant_client import models
@@ -56,6 +57,141 @@ def xml_to_table(xml_data):
 
     return table_data
 
+def validate_steel_factory_data(accident_docs, query):
+    """Validate and filter steel factory accidents specifically"""
+    
+    # Steel factory department names in Korean data
+    steel_factory_keywords = ['제강공장', 'steel factory', 'steelmaking']
+    
+    # Extract steel factory specific accidents
+    steel_accidents = []
+    
+    if hasattr(accident_docs, '__iter__') and not isinstance(accident_docs, str):
+        for doc in accident_docs:
+            if hasattr(doc, 'page_content'):
+                content = doc.page_content.lower()
+                if any(keyword in content for keyword in steel_factory_keywords):
+                    steel_accidents.append(doc)
+    
+    # Count validation
+    steel_count = len(steel_accidents)
+    
+    validation_note = f"""
+    VALIDATION CHECK:
+    - Steel factory accidents found: {steel_count}
+    - Department filter applied: 제강공장 only
+    - Excluded: 원자력공장, 단조공장, 터빈공장, etc.
+    """
+    
+    return steel_accidents, validation_note
+
+def anonymize_employee_names(text):
+    """Anonymize employee names while maintaining data structure"""
+    import re
+    
+    # Korean name patterns ( 2-3 characters typically)
+    korean_names = re.findall(r'[가-힣]{2,3}(?=\s|$|,|\)|\()', text)
+    
+    # Create anonymization mapping
+    name_mapping = {}
+    for i, name in enumerate(set(korean_names)):
+        # Create generic identifiers
+        name_mapping[name] = f"Employee_{chr(65+i)}"  # Employee_A, Employee_B, etc.
+    
+    # Replace names
+    anonymized_text = text
+    for real_name, anon_name in name_mapping.items():
+        anonymized_text = anonymized_text.replace(real_name, anon_name)
+    
+    return anonymized_text, name_mapping
+
+def validate_data_quality(docs):
+    """Check if retrieved documents contain actual accident data"""
+    
+    if not docs or len(docs) == 0:
+        return False, "No documents retrieved"
+    
+    # Check for accident-related content
+    accident_indicators = ['사고', '재해', 'accident', 'injury', '부상', 'incident']
+    has_accident_data = False
+    
+    for doc in docs:
+        if hasattr(doc, 'page_content'):
+            content = doc.page_content.lower()
+            if any(indicator in content for indicator in accident_indicators):
+                has_accident_data = True
+                break
+    
+    if not has_accident_data:
+        return False, "Documents don't contain accident data"
+    
+    return True, f"Valid accident data found in {len(docs)} documents"
+
+def validate_steel_plant_chemical_data(chemical_docs, query):
+    """Validate and filter steel plant chemicals specifically"""
+    
+    # Steel plant section markers in Korean data
+    steel_plant_keywords = ['■ Steel Plant', '■ 제강공장', 'steel plant', 'steelmaking']
+    
+    # Extract steel plant specific chemicals
+    steel_chemicals = []
+    
+    if hasattr(chemical_docs, '__iter__') and not isinstance(chemical_docs, str):
+        for doc in chemical_docs:
+            if hasattr(doc, 'page_content'):
+                content = doc.page_content
+                # Check for steel plant section markers
+                if any(keyword in content for keyword in steel_plant_keywords):
+                    steel_chemicals.append(doc)
+    
+    # Count validation
+    steel_chemical_count = len(steel_chemicals)
+    
+    validation_note = f"""
+    CHEMICAL DATA VALIDATION:
+    - Steel plant chemicals found: {steel_chemical_count}
+    - Department filter applied: ■ Steel Plant only
+    - Excluded: Nuclear plant, Forging plant, etc.
+    """
+    
+    return steel_chemicals, validation_note
+
+def validate_chemical_data_quality(docs):
+    """Check if retrieved documents contain actual chemical data"""
+    
+    if not docs or len(docs) == 0:
+        return False, "No chemical documents retrieved"
+    
+    # Check for chemical-related content
+    chemical_indicators = ['CAS', 'Chemical', '화학', 'MSDS', 'Monthly Handling', '취급량']
+    has_chemical_data = False
+    
+    for doc in docs:
+        if hasattr(doc, 'page_content'):
+            content = doc.page_content
+            if any(indicator in content for indicator in chemical_indicators):
+                has_chemical_data = True
+                break
+    
+    if not has_chemical_data:
+        return False, "Documents don't contain chemical data"
+    
+    return True, f"Valid chemical data found in {len(docs)} documents"
+
+def extract_special_management_substances(chemical_docs):
+    """Extract only chemicals marked as Special Management Substances"""
+    
+    special_substances = []
+    
+    for doc in chemical_docs:
+        if hasattr(doc, 'page_content'):
+            content = doc.page_content
+            # Look for specific marking pattern
+            if 'Special Management Substance: ○' in content or 'Special Management Substance": "○"' in content:
+                special_substances.append(doc)
+    
+    return special_substances
+
 @tool
 def get_accident_records(query: str) -> str:
     """
@@ -64,26 +200,6 @@ def get_accident_records(query: str) -> str:
     Supports both English and Korean queries.
     Example queries: '사고 기록', 'accident records', '안전 사고', 'workplace injuries', '사고 보고서', 'safety incidents', 'accident analysis', ''.
     """
-<<<<<<< HEAD
-    retrieved_docs = st.session_state.client.query_points(
-        collection_name="doosan_accident_records",
-        query=models.Document(
-            text=query,
-            model="Qdrant/minicoil-v1"
-        ),
-        using="minicoil",
-        limit=30  # increased coverage
-=======
-    # retrieved_docs = st.session_state.client.query_points(
-    #     collection_name="doosan_accident_records",
-    #     query=models.Document(
-    #         text=query,
-    #         model="Qdrant/minicoil-v1"
-    #     ),
-    #     using="minicoil",
-    #     limit=5
-    # )
-    # docs = [doc.payload['text'] for doc in retrieved_docs.points]
     qdrant = QdrantVectorStore.from_existing_collection(
     embedding=embeddings,
     collection_name="doosan-accidents-new",
@@ -91,55 +207,23 @@ def get_accident_records(query: str) -> str:
     api_key=os.getenv("QDRANT_API_KEY"),
     port=None,
     timeout=120
->>>>>>> origin/Hassaan
     )
     retriever = qdrant.as_retriever(search_kwargs={"k": 30})
     retrieved_docs = retriever.invoke(query)
     print("retrieved_docs",retrieved_docs)
-
-    # docs = [doc.payload['text'] for doc in retrieved_docs.points]
-    # print("docs",docs)
-    # return "\n\n".join(docs)
     return retrieved_docs
 
 
 def accident_output(accident_docs, query):
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
     lang = detect_language(query)
-
-    # Attempt to summarize actual data patterns if JSON-like
-    try:
-        if isinstance(accident_docs, str) and accident_docs.strip().startswith('{'):
-            accident_json = json.loads(accident_docs)
-            total_accidents = len(accident_json.get('data', []))
-
-            injury_types = {}
-            locations = {}
-            causes = {}
-
-            for acc in accident_json.get('data', []):
-                injury = acc.get('상해부위/종류', '')
-                if injury:
-                    injury_types[injury] = injury_types.get(injury, 0) + 1
-                loc = acc.get('소 속', '')
-                if loc:
-                    locations[loc] = locations.get(loc, 0) + 1
-                cause = acc.get('발생형태', '')
-                if cause:
-                    causes[cause] = causes.get(cause, 0) + 1
-
-            analysis_summary = f"""
-            ACTUAL DATA ANALYSIS:
-            - Total accidents analyzed: {total_accidents}
-            - Top injury types: {dict(sorted(injury_types.items(), key=lambda x: x[1], reverse=True)[:5])}
-            - Accident locations: {dict(sorted(locations.items(), key=lambda x: x[1], reverse=True)[:5])}
-            - Main causes: {dict(sorted(causes.items(), key=lambda x: x[1], reverse=True)[:5])}
-            """
-        else:
-            analysis_summary = "Raw text data provided"
-    except Exception:
-        analysis_summary = "Unable to parse structured data"
+    
+    # Apply steel factory validation if relevant
+    if 'steel factory' in query.lower() or '제강공장' in query:
+        filtered_docs, validation_note = validate_steel_factory_data(accident_docs, query)
+        accident_docs = filtered_docs
+    else:
+        validation_note = ""
 
     language_instruction = (
         "MANDATORY: Respond ONLY in Korean language."
@@ -147,39 +231,38 @@ def accident_output(accident_docs, query):
         "MANDATORY: Respond ONLY in English language."
     )
 
-    factory_focus = None
-    if 'steel factory' in query.lower() or '제강공장' in query:
-        factory_focus = '제강공장'
-    elif 'forging' in query.lower() or '단조공장' in query:
-        factory_focus = '단조공장'
-
     response = client.chat.completions.create(
         model="gpt-4o-mini",
-        temperature=0.2,
+        temperature=0.0,
         messages=[
             {
                 "role": "system",
                 "content": (
                     f"{language_instruction}\n\n"
-                    "You are an industrial safety analyst. CRITICAL INSTRUCTIONS:\n"
-                    "1. You MUST analyze ACTUAL accident data, not provide generic safety advice\n"
-                    "2. Reference SPECIFIC incidents with dates, names, and injuries\n"
-                    "3. Count and categorize REAL accidents from the data\n"
-                    f"\n{analysis_summary}\n\n"
-                    f"Raw accident data:\n{accident_docs}\n\n"
-                    f"{('Focus on ' + factory_focus + ' accidents only') if factory_focus else ''}\n\n"
-                    "When answering:\n"
-                    "- State 'Based on X actual accidents from [location]'\n"
-                    "- Name specific workers and dates (e.g., '박찬용 on 2023-04-06')\n"
-                    "- Identify real patterns (e.g., '3 burn injuries in steel factory')\n"
-                    "- Make recommendations based on actual incidents\n"
-                    "- Never give generic safety advice without data references"
+                    "CRITICAL INSTRUCTIONS FOR ACCURACY:\n"
+                    "1. Count accidents EXACTLY from provided data only\n"
+                    "2. Use Employee_A, Employee_B format instead of real names\n"
+                    "3. State exact count: 'Based on X accidents in steel factory'\n"
+                    "4. Filter departments precisely - only 제강공장 for steel factory queries\n"
+                    "5. Verify each accident belongs to requested department\n"
+                    f"\n{validation_note}\n\n"
+                    f"Accident data to analyze:\n{accident_docs}\n\n"
+                    "Response format:\n"
+                    "- Start with: 'Based on [exact count] steel factory accidents...'\n"
+                    "- Use Employee_A, Employee_B for worker identification\n"
+                    "- Include specific dates and injury types\n"
+                    "- Identify real patterns from this exact dataset\n"
                 )
             },
             {"role": "user", "content": query},
         ],
     )
-    return response.choices[0].message.content
+    
+    # Anonymize the response
+    raw_response = response.choices[0].message.content
+    anonymized_response, name_mapping = anonymize_employee_names(raw_response)
+    
+    return anonymized_response
 
 @tool
 def get_chemical_usage(query: str) -> str:
@@ -390,8 +473,15 @@ def get_chemical_details(query:str):
 
 def chemical_output(table_data, query):
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
     lang = detect_language(query)
+    
+    # Apply steel plant validation if relevant
+    if 'steel plant' in query.lower() or '제강공장' in query.lower() or 'steel factory' in query.lower():
+        filtered_docs, validation_note = validate_steel_plant_chemical_data(table_data, query)
+        table_data = filtered_docs
+    else:
+        validation_note = ""
+
     language_instruction = (
         "MANDATORY: Respond ONLY in Korean language for the entire output."
         if lang == 'ko' else
@@ -400,25 +490,25 @@ def chemical_output(table_data, query):
 
     response = client.chat.completions.create(
         model="gpt-4o-mini",
+        temperature=0.0,
         messages=[{
             "role": "system",
             "content": (
                 f"{language_instruction}\n\n"
-                "You are a chemical safety specialist with expertise in MSDS interpretation. "
-                f"From the provided table data {table_data}, first extract and present only these fields if available: "
-                "casNo, chemId, chemNameKor, enNo, KeNO, lastDate, unNo, and Kosha confirmation status. "
-                "Then, using the extracted chemical data and the user query, generate a structured "
-                "CHEMICAL RISK ASSESSMENT with the following sections:\n\n"
-                "1. Chemical Properties & Hazards\n"
-                "   - Physical hazards (fire, explosion, reactivity) with frequency (1–5) and severity (1–4)\n"
-                "   - Health hazards (acute/chronic effects) with frequency and severity\n"
-                "   - Environmental hazards with frequency and severity\n"
-                "2. Likely Exposure Scenarios in the specified work context\n"
-                "3. PPE Matrix (detailing equipment per exposure route), (not necessary if not available)\n"
-                "4. Emergency Response Procedures\n"
-                "5. Risk Mitigation Hierarchy (elimination → substitution → engineering → administrative → PPE)\n\n"
-                "Reference relevant safety regulations where applicable. "
-                "Keep the output structured, precise, and actionable."
+                "CRITICAL INSTRUCTIONS FOR CHEMICAL DATA ACCURACY:\n"
+                "1. Extract chemicals ONLY from ■ Steel Plant section\n"
+                "2. Look for 'Special Management Substance: ○' markings\n"
+                "3. State exact monthly handling amounts from data\n"
+                "4. Include CAS numbers and chemical names exactly as shown\n"
+                "5. Identify measurement targets marked with '측정대상: ○'\n"
+                f"\n{validation_note}\n\n"
+                f"Chemical data to analyze:\n{table_data}\n\n"
+                "Response format:\n"
+                "- Start with: 'Based on steel plant chemical data analysis...'\n"
+                "- List actual chemicals with CAS numbers\n"
+                "- Include real monthly handling amounts (kg/ℓ)\n"
+                "- Identify Special Management Substances specifically\n"
+                "- Reference actual usage purposes from data\n"
             )
         }, {"role": "user", "content": query}],
     )
@@ -702,15 +792,23 @@ if user_query := st.chat_input("Ask a question about chemical usage, accidents, 
                         output=chemical_output(table_data=table_data,query=user_query)
                     elif tool_name == "get_chemical_usage":
                         chemical_usage_docs=get_chemical_usage(user_query)
-                        output=chemical_output(table_data=chemical_usage_docs,query=user_query)
+                        # Validate chemical data quality
+                        is_valid, message = validate_chemical_data_quality(chemical_usage_docs)
+                        if not is_valid:
+                            output = f"Chemical data quality issue: {message}"
+                        else:
+                            output=chemical_output(table_data=chemical_usage_docs,query=user_query)
                     elif tool_name == "get_regulations_data":
                         regulations_docs=get_regulations_data(user_query)
                         output=regulations_output(regulations_docs=regulations_docs,query=user_query)
                     elif tool_name == "get_accident_records":
                         accident_docs=get_accident_records(user_query)
-                        if not accident_docs or len(accident_docs) < 100:
-                            print("Warning: Limited accident data retrieved")
-                        output=accident_output(accident_docs=accident_docs,query=user_query)
+                        # Validate data quality
+                        is_valid, message = validate_data_quality(accident_docs)
+                        if not is_valid:
+                            output = f"Data quality issue: {message}"
+                        else:
+                            output=accident_output(accident_docs=accident_docs,query=user_query)
                     elif tool_name == "get_risk_assessment":
                         risk_assessment_docs=get_risk_assessment(user_query)
                         if "table" in user_query.lower() or "테이블" in user_query.lower():
