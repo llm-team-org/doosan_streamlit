@@ -71,20 +71,60 @@ def get_accident_records(query: str) -> str:
             model="Qdrant/minicoil-v1"
         ),
         using="minicoil",
-        limit=5
+        limit=30  # increased coverage
     )
     docs = [doc.payload['text'] for doc in retrieved_docs.points]
     return "\n\n".join(docs)
 
-def accident_output(accident_docs,query):
+def accident_output(accident_docs, query):
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
     lang = detect_language(query)
+
+    # Attempt to summarize actual data patterns if JSON-like
+    try:
+        if isinstance(accident_docs, str) and accident_docs.strip().startswith('{'):
+            accident_json = json.loads(accident_docs)
+            total_accidents = len(accident_json.get('data', []))
+
+            injury_types = {}
+            locations = {}
+            causes = {}
+
+            for acc in accident_json.get('data', []):
+                injury = acc.get('상해부위/종류', '')
+                if injury:
+                    injury_types[injury] = injury_types.get(injury, 0) + 1
+                loc = acc.get('소 속', '')
+                if loc:
+                    locations[loc] = locations.get(loc, 0) + 1
+                cause = acc.get('발생형태', '')
+                if cause:
+                    causes[cause] = causes.get(cause, 0) + 1
+
+            analysis_summary = f"""
+            ACTUAL DATA ANALYSIS:
+            - Total accidents analyzed: {total_accidents}
+            - Top injury types: {dict(sorted(injury_types.items(), key=lambda x: x[1], reverse=True)[:5])}
+            - Accident locations: {dict(sorted(locations.items(), key=lambda x: x[1], reverse=True)[:5])}
+            - Main causes: {dict(sorted(causes.items(), key=lambda x: x[1], reverse=True)[:5])}
+            """
+        else:
+            analysis_summary = "Raw text data provided"
+    except Exception:
+        analysis_summary = "Unable to parse structured data"
+
     language_instruction = (
-        "MANDATORY: Respond ONLY in Korean language for the entire output."
+        "MANDATORY: Respond ONLY in Korean language."
         if lang == 'ko' else
-        "MANDATORY: Respond ONLY in English language for the entire output."
+        "MANDATORY: Respond ONLY in English language."
     )
+
+    factory_focus = None
+    if 'steel factory' in query.lower() or '제강공장' in query:
+        factory_focus = '제강공장'
+    elif 'forging' in query.lower() or '단조공장' in query:
+        factory_focus = '단조공장'
 
     response = client.chat.completions.create(
         model="gpt-4o-mini",
@@ -94,39 +134,19 @@ def accident_output(accident_docs,query):
                 "role": "system",
                 "content": (
                     f"{language_instruction}\n\n"
-                    "You are an industrial safety analyst specializing in accident prevention. "
-                    f"From the provided accident data {accident_docs}, extract only the information relevant to the user query. "
-                    "Then, analyze potential incidents and generate a comprehensive risk profile in the following exact format:\n\n"
-                    + ("사고 위험 프로필:\n"
-                       "- 유사 과거 사고: [사고 데이터베이스 패턴 검색]\n"
-                       "- 확률 평가:\n"
-                       "  * 과거 데이터 기준 기본 비율: [%]\n"
-                       "  * 현재 상황 조정: [1-5 척도]\n"
-                       "- 잠재적 심각도 결과:\n"
-                       "  * 가장 가능성 있는 시나리오: [심각도 1-4]\n"
-                       "  * 최악의 시나리오: [심각도 1-4]\n"
-                       "- 중요 제어 포인트: [사고가 일반적으로 발생하는 특정 순간/행동]\n"
-                       "- 모니터링할 선행 지표: [측정 가능한 전조]\n"
-                       "- 권장 안전 장벽: [예방 및 완화 계층]\n\n"
-                       if lang == 'ko' else
-                       "INCIDENT RISK PROFILE:\n"
-                       "- Similar Historical Incidents: [search accident database patterns]\n"
-                       "- Probability Assessment:\n"
-                       "  * Base rate from historical data: [%]\n"
-                       "  * Adjusted for current conditions: [1-5 scale]\n"
-                       "- Potential Severity Outcomes:\n"
-                       "  * Most likely scenario: [severity 1-4]\n"
-                       "  * Worst case scenario: [severity 1-4]\n"
-                       "- Critical Control Points: [specific moments/actions where incidents typically occur]\n"
-                       "- Leading Indicators to Monitor: [measurable precursors]\n"
-                       "- Recommended Safety Barriers: [prevention and mitigation layers]\n\n"
-                    )
-                    + "Requirements:\n"
-                    + "• Provide confidence levels (High/Medium/Low) for each assessment based on data availability.\n"
-                    + ("• If specific accident data is not found, indicate '관련 과거 데이터 없음'.\n" if lang == 'ko' else "• If specific accident data is not found, indicate 'No relevant historical data available'.\n")
-                    + "• Focus on actionable insights and preventive measures.\n"
-                    + "• Include specific accident patterns, causes, and lessons learned when available.\n"
-                    + "• Ensure outputs are technically accurate, concise, and actionable."
+                    "You are an industrial safety analyst. CRITICAL INSTRUCTIONS:\n"
+                    "1. You MUST analyze ACTUAL accident data, not provide generic safety advice\n"
+                    "2. Reference SPECIFIC incidents with dates, names, and injuries\n"
+                    "3. Count and categorize REAL accidents from the data\n"
+                    f"\n{analysis_summary}\n\n"
+                    f"Raw accident data:\n{accident_docs}\n\n"
+                    f"{('Focus on ' + factory_focus + ' accidents only') if factory_focus else ''}\n\n"
+                    "When answering:\n"
+                    "- State 'Based on X actual accidents from [location]'\n"
+                    "- Name specific workers and dates (e.g., '박찬용 on 2023-04-06')\n"
+                    "- Identify real patterns (e.g., '3 burn injuries in steel factory')\n"
+                    "- Make recommendations based on actual incidents\n"
+                    "- Never give generic safety advice without data references"
                 )
             },
             {"role": "user", "content": query},
@@ -607,7 +627,35 @@ if user_query := st.chat_input("Ask a question about chemical usage, accidents, 
                 history_context = "\n".join([f"Previous: User: {h['User']} | AI: {h['AI'][:200]}..." for h in recent_history])
                 context_query = f"Previous conversation context:\n{history_context}\n\nCurrent query: {context_query}"
             
-            messages = [SystemMessage(content=language_instruction), HumanMessage(context_query)]
+            accident_keywords = [
+                'safety improvement', 'accident', 'injury', 'incident',
+                'what happened', 'how many accidents', 'safety analysis',
+                '안전 개선', '사고', '부상', '재해', '위험 분석'
+            ]
+
+            # Enhanced system instruction with accident context if relevant
+            accident_context = ""
+            if any(keyword in user_query.lower() for keyword in accident_keywords):
+                try:
+                    accident_docs_ctx = get_accident_records(user_query)
+                    if accident_docs_ctx and len(accident_docs_ctx) > 100:
+                        accident_context = f"\n\nRELEVANT ACCIDENT DATA CONTEXT:\n{accident_docs_ctx[:2000]}..."
+                    else:
+                        accident_context = "\n\nNote: Limited accident data available in system."
+                except Exception as e:
+                    print(f"Error retrieving accident context: {e}")
+                    accident_context = "\n\nNote: Unable to retrieve accident data context."
+
+            system_instruction = (
+                f"{language_instruction}\n\n"
+                "IMPORTANT RULES:\n"
+                "1. When asked about safety improvements or accidents, use ACTUAL data\n"
+                "2. Reference specific incidents, never generic advice\n"
+                "3. Count real accidents and identify actual patterns\n"
+                "4. Mention specific dates, names, and locations from the data"
+                f"{accident_context}"
+            )
+            messages = [SystemMessage(content=system_instruction), HumanMessage(context_query)]
             ai_msg = llm_with_tools.invoke(messages)
             print(ai_msg)
             messages.append(ai_msg)
@@ -633,6 +681,8 @@ if user_query := st.chat_input("Ask a question about chemical usage, accidents, 
                         output=regulations_output(regulations_docs=regulations_docs,query=user_query)
                     elif tool_name == "get_accident_records":
                         accident_docs=get_accident_records(user_query)
+                        if not accident_docs or len(accident_docs) < 100:
+                            print("Warning: Limited accident data retrieved")
                         output=accident_output(accident_docs=accident_docs,query=user_query)
                     elif tool_name == "get_risk_assessment":
                         risk_assessment_docs=get_risk_assessment(user_query)
