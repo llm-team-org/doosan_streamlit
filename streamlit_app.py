@@ -362,6 +362,7 @@ def get_regulations_data(query: str) -> str:
     )
     retriever = qdrant.as_retriever(search_kwargs={"k": 30})
     retrieved_docs = retriever.invoke(query)
+    print("retrieved_docs",retrieved_docs)
     return retrieved_docs
 
 @tool
