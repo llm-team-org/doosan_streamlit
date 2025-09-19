@@ -1,4 +1,3 @@
-#Javeria
 import os
 import streamlit as st
 from qdrant_client import models
@@ -9,7 +8,7 @@ import requests
 from openai import OpenAI
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_core.tools import tool
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import HumanMessage
 from langchain_qdrant import QdrantVectorStore
 from dotenv import load_dotenv
 import json
@@ -22,15 +21,6 @@ embeddings = OpenAIEmbeddings(openai_api_key=os.getenv("OPENAI_API_KEY"), model=
 
 if "client" not in st.session_state:
     st.session_state.client = qdrant_client.QdrantClient(url=os.getenv("QDRANT_URL"),api_key=os.getenv("QDRANT_API_KEY"),port=None)
-
-def detect_language(text: str) -> str:
-    """Detect if text is Korean ('ko') or English ('en') based on Hangul ratio."""
-    no_space = text.replace(" ", "")
-    total_chars = len(no_space)
-    korean_chars = sum(1 for ch in no_space if ord('가') <= ord(ch) <= ord('힣'))
-    if total_chars > 0 and (korean_chars / total_chars) > 0.3:
-        return 'ko'
-    return 'en'
 
 def xml_to_table(xml_data):
     """
@@ -57,141 +47,6 @@ def xml_to_table(xml_data):
 
     return table_data
 
-def validate_steel_factory_data(accident_docs, query):
-    """Validate and filter steel factory accidents specifically"""
-    
-    # Steel factory department names in Korean data
-    steel_factory_keywords = ['제강공장', 'steel factory', 'steelmaking']
-    
-    # Extract steel factory specific accidents
-    steel_accidents = []
-    
-    if hasattr(accident_docs, '__iter__') and not isinstance(accident_docs, str):
-        for doc in accident_docs:
-            if hasattr(doc, 'page_content'):
-                content = doc.page_content.lower()
-                if any(keyword in content for keyword in steel_factory_keywords):
-                    steel_accidents.append(doc)
-    
-    # Count validation
-    steel_count = len(steel_accidents)
-    
-    validation_note = f"""
-    VALIDATION CHECK:
-    - Steel factory accidents found: {steel_count}
-    - Department filter applied: 제강공장 only
-    - Excluded: 원자력공장, 단조공장, 터빈공장, etc.
-    """
-    
-    return steel_accidents, validation_note
-
-def anonymize_employee_names(text):
-    """Anonymize employee names while maintaining data structure"""
-    import re
-    
-    # Korean name patterns ( 2-3 characters typically)
-    korean_names = re.findall(r'[가-힣]{2,3}(?=\s|$|,|\)|\()', text)
-    
-    # Create anonymization mapping
-    name_mapping = {}
-    for i, name in enumerate(set(korean_names)):
-        # Create generic identifiers
-        name_mapping[name] = f"Employee_{chr(65+i)}"  # Employee_A, Employee_B, etc.
-    
-    # Replace names
-    anonymized_text = text
-    for real_name, anon_name in name_mapping.items():
-        anonymized_text = anonymized_text.replace(real_name, anon_name)
-    
-    return anonymized_text, name_mapping
-
-def validate_data_quality(docs):
-    """Check if retrieved documents contain actual accident data"""
-    
-    if not docs or len(docs) == 0:
-        return False, "No documents retrieved"
-    
-    # Check for accident-related content
-    accident_indicators = ['사고', '재해', 'accident', 'injury', '부상', 'incident']
-    has_accident_data = False
-    
-    for doc in docs:
-        if hasattr(doc, 'page_content'):
-            content = doc.page_content.lower()
-            if any(indicator in content for indicator in accident_indicators):
-                has_accident_data = True
-                break
-    
-    if not has_accident_data:
-        return False, "Documents don't contain accident data"
-    
-    return True, f"Valid accident data found in {len(docs)} documents"
-
-def validate_steel_plant_chemical_data(chemical_docs, query):
-    """Validate and filter steel plant chemicals specifically"""
-    
-    # Steel plant section markers in Korean data
-    steel_plant_keywords = ['■ Steel Plant', '■ 제강공장', 'steel plant', 'steelmaking']
-    
-    # Extract steel plant specific chemicals
-    steel_chemicals = []
-    
-    if hasattr(chemical_docs, '__iter__') and not isinstance(chemical_docs, str):
-        for doc in chemical_docs:
-            if hasattr(doc, 'page_content'):
-                content = doc.page_content
-                # Check for steel plant section markers
-                if any(keyword in content for keyword in steel_plant_keywords):
-                    steel_chemicals.append(doc)
-    
-    # Count validation
-    steel_chemical_count = len(steel_chemicals)
-    
-    validation_note = f"""
-    CHEMICAL DATA VALIDATION:
-    - Steel plant chemicals found: {steel_chemical_count}
-    - Department filter applied: ■ Steel Plant only
-    - Excluded: Nuclear plant, Forging plant, etc.
-    """
-    
-    return steel_chemicals, validation_note
-
-def validate_chemical_data_quality(docs):
-    """Check if retrieved documents contain actual chemical data"""
-    
-    if not docs or len(docs) == 0:
-        return False, "No chemical documents retrieved"
-    
-    # Check for chemical-related content
-    chemical_indicators = ['CAS', 'Chemical', '화학', 'MSDS', 'Monthly Handling', '취급량']
-    has_chemical_data = False
-    
-    for doc in docs:
-        if hasattr(doc, 'page_content'):
-            content = doc.page_content
-            if any(indicator in content for indicator in chemical_indicators):
-                has_chemical_data = True
-                break
-    
-    if not has_chemical_data:
-        return False, "Documents don't contain chemical data"
-    
-    return True, f"Valid chemical data found in {len(docs)} documents"
-
-def extract_special_management_substances(chemical_docs):
-    """Extract only chemicals marked as Special Management Substances"""
-    
-    special_substances = []
-    
-    for doc in chemical_docs:
-        if hasattr(doc, 'page_content'):
-            content = doc.page_content
-            # Look for specific marking pattern
-            if 'Special Management Substance: ○' in content or 'Special Management Substance": "○"' in content:
-                special_substances.append(doc)
-    
-    return special_substances
-
 @tool
 def get_accident_records(query: str) -> str:
     """
@@ -200,6 +55,16 @@ def get_accident_records(query: str) -> str:
     Supports both English and Korean queries.
     Example queries: '사고 기록', 'accident records', '안전 사고', 'workplace injuries', '사고 보고서', 'safety incidents', 'accident analysis', ''.
     """
+    # retrieved_docs = st.session_state.client.query_points(
+    #     collection_name="doosan_accident_records",
+    #     query=models.Document(
+    #         text=query,
+    #         model="Qdrant/minicoil-v1"
+    #     ),
+    #     using="minicoil",
+    #     limit=5
+    # )
+    # docs = [doc.payload['text'] for doc in retrieved_docs.points]
     qdrant = QdrantVectorStore.from_existing_collection(
     embedding=embeddings,
     collection_name="doosan-accidents-new",
@@ -211,58 +76,45 @@ def get_accident_records(query: str) -> str:
     retriever = qdrant.as_retriever(search_kwargs={"k": 30})
     retrieved_docs = retriever.invoke(query)
     print("retrieved_docs",retrieved_docs)
+
+    # docs = [doc.payload['text'] for doc in retrieved_docs.points]
+    # print("docs",docs)
+    # return "\n\n".join(docs)
     return retrieved_docs
 
 
-def accident_output(accident_docs, query):
+def accident_output(accident_docs,query):
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-    lang = detect_language(query)
-    
-    # Apply steel factory validation if relevant
-    if 'steel factory' in query.lower() or '제강공장' in query:
-        filtered_docs, validation_note = validate_steel_factory_data(accident_docs, query)
-        accident_docs = filtered_docs
-    else:
-        validation_note = ""
 
-    language_instruction = (
-        "MANDATORY: Respond ONLY in Korean language."
-        if lang == 'ko' else
-        "MANDATORY: Respond ONLY in English language."
-    )
-
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        temperature=0.0,
-        messages=[
-            {
-                "role": "system",
-                "content": (
-                    f"{language_instruction}\n\n"
-                    "CRITICAL INSTRUCTIONS FOR ACCURACY:\n"
-                    "1. Count accidents EXACTLY from provided data only\n"
-                    "2. Use Employee_A, Employee_B format instead of real names\n"
-                    "3. State exact count: 'Based on X accidents in steel factory'\n"
-                    "4. Filter departments precisely - only 제강공장 for steel factory queries\n"
-                    "5. Verify each accident belongs to requested department\n"
-                    f"\n{validation_note}\n\n"
-                    f"Accident data to analyze:\n{accident_docs}\n\n"
-                    "Response format:\n"
-                    "- Start with: 'Based on [exact count] steel factory accidents...'\n"
-                    "- Use Employee_A, Employee_B for worker identification\n"
-                    "- Include specific dates and injury types\n"
-                    "- Identify real patterns from this exact dataset\n"
-                )
-            },
-            {"role": "user", "content": query},
-        ],
-    )
-    
-    # Anonymize the response
-    raw_response = response.choices[0].message.content
-    anonymized_response, name_mapping = anonymize_employee_names(raw_response)
-    
-    return anonymized_response
+    response = client.responses.create(
+            model="gpt-4.1-mini",
+            temperature=0.2,
+            instructions=(
+                "You are an industrial safety analyst specializing in accident prevention. "
+                f"From the provided accident data {accident_docs}, extract only the information relevant to the user query. "
+                "Then, analyze potential incidents and generate a comprehensive risk profile in the following exact format:\n\n"
+                "INCIDENT RISK PROFILE:\n"
+                "- Similar Historical Incidents: [search accident database patterns]\n"
+                "- Probability Assessment:\n"
+                "  * Base rate from historical data: [%]\n"
+                "  * Adjusted for current conditions: [1-5 scale]\n"
+                "- Potential Severity Outcomes:\n"
+                "  * Most likely scenario: [severity 1-4]\n"
+                "  * Worst case scenario: [severity 1-4]\n"
+                "- Critical Control Points: [specific moments/actions where incidents typically occur]\n"
+                "- Leading Indicators to Monitor: [measurable precursors]\n"
+                "- Recommended Safety Barriers: [prevention and mitigation layers]\n\n"
+                "Requirements:\n"
+                "• Provide confidence levels (High/Medium/Low) for each assessment based on data availability.\n"
+                "• If specific accident data is not found, indicate 'No relevant historical data available'.\n"
+                "• Focus on actionable insights and preventive measures.\n"
+                "• Include specific accident patterns, causes, and lessons learned when available.\n"
+                "• Ensure outputs are technically accurate, concise, and actionable.\n"
+                "• If the user query is in Korean language, provide the output in Korean language."
+            ),
+            input=query,
+        )
+    return response.output_text
 
 @tool
 def get_chemical_usage(query: str) -> str:
@@ -331,12 +183,9 @@ def get_risk_assessment(query: str) -> str:
 
 def risk_assessment_table_output(risk_assessment_docs, query):
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-    lang = detect_language(query)
     
     # Create structured prompt for JSON output
     json_instructions = f"""
-MANDATORY: All field names and values MUST be in {'Korean' if lang == 'ko' else 'English'}.
-
 You are a safety engineering expert specializing in industrial risk assessments. Your task is to analyze the provided risk assessment documents: {risk_assessment_docs}
 
 Instructions:
@@ -346,7 +195,7 @@ Instructions:
 - If no structured data is available at all, return a JSON object with all fields set to "N/A".
 - Do not include explanations, extra text, or markdown—only JSON.
 - Provide whole table 
-- Use {'Korean' if lang == 'ko' else 'English'} for all headers and values
+- If the user query is in korean language then provide the output table in korean language
 - Extract only the information relevant to the user query
 - Generate a comprehensive risk assessment with the specified format
 
@@ -407,37 +256,28 @@ Output Format:
 def risk_assessment_output(risk_assessment_docs, query):
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-    lang = detect_language(query)
-    language_instruction = (
-        "MANDATORY: Respond ONLY in Korean language for the entire output."
-        if lang == 'ko' else
-        "MANDATORY: Respond ONLY in English language for the entire output."
-    )
-
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
+    response = client.responses.create(
+        model="gpt-4.1-mini",
         temperature=0.2,
-        messages=[{
-            "role": "system",
-            "content": (
-                f"{language_instruction}\n\n"
-                "You are a safety engineering expert specializing in industrial risk assessments. "
-                f"From the provided {risk_assessment_docs}, extract only the information relevant to the user query. "
-                "Then, generate a comprehensive risk assessment in the following exact format:\n\n"
-                "- Task/Process Name: [specific work being performed]\n"
-                "- Hazard Identification: [list 3–5 specific hazards]\n"
-                "- Current Risk Level: [Frequency (1–5)] x [Severity (1–4)] = [Risk Score]\n"
-                "- Root Causes: [underlying reasons for each hazard]\n"
-                "- Control Measures: [specific preventive/protective actions]\n"
-                "- Residual Risk After Controls: [new Frequency] x [new Severity] = [new Risk Score]\n\n"
-                "Requirements:\n"
-                "• Always cite relevant safety regulations (e.g., KOSHA, ISO 45001).\n"
-                "• Include specific MSDS data when chemicals are involved.\n"
-                "• Ensure outputs are technically accurate, concise, and actionable."
-            )
-        }, {"role": "user", "content": query}],
+        instructions=(
+            "You are a safety engineering expert specializing in industrial risk assessments. "
+            f"From the provided {risk_assessment_docs}, extract only the information relevant to the user query. "
+            "Then, generate a comprehensive risk assessment in the following exact format:\n\n"
+            "- Task/Process Name: [specific work being performed]\n"
+            "- Hazard Identification: [list 3–5 specific hazards]\n"
+            "- Current Risk Level: [Frequency (1–5)] x [Severity (1–4)] = [Risk Score]\n"
+            "- Root Causes: [underlying reasons for each hazard]\n"
+            "- Control Measures: [specific preventive/protective actions]\n"
+            "- Residual Risk After Controls: [new Frequency] x [new Severity] = [new Risk Score]\n\n"
+            "Requirements:\n"
+            "• Always cite relevant safety regulations (e.g., KOSHA, ISO 45001).\n"
+            "• Include specific MSDS data when chemicals are involved.\n"
+            "• Ensure outputs are technically accurate, concise, and actionable."
+            "• If the user query is in Korean language, provide the output in Korean language."
+        ),
+        input=query,
     )
-    return response.choices[0].message.content
+    return response.output_text
 
 @tool
 def get_chemical_details(query:str):
@@ -446,18 +286,12 @@ def get_chemical_details(query:str):
     Example query: 'What is cas no of oxygen', 'what is chemical ID of nitrogen'.
     """
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        temperature=0,
-        messages=[
-            {
-                "role": "system",
-                "content": "You are a helpful chemical identifier assistant. Identify the chemical name only and return a single word. If no chemical name is available then return 'none'."
-            },
-            {"role": "user", "content": query},
-        ],
+    response = client.responses.create(
+        model="gpt-4.1-mini",
+        instructions="You are a helpful chemical identifier assistant. Your job is to identify the chemical name only and return me only chemical name single word, Response: Only one word chemical name, if no chemical name is avilable then return 'none'",
+        input=query
     )
-    chemical_name = response.choices[0].message.content.strip()
+    chemical_name=response.output_text
     if chemical_name=="none":
         return None
     else:
@@ -473,46 +307,30 @@ def get_chemical_details(query:str):
 
 def chemical_output(table_data, query):
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-    lang = detect_language(query)
-    
-    # Apply steel plant validation if relevant
-    if 'steel plant' in query.lower() or '제강공장' in query.lower() or 'steel factory' in query.lower():
-        filtered_docs, validation_note = validate_steel_plant_chemical_data(table_data, query)
-        table_data = filtered_docs
-    else:
-        validation_note = ""
 
-    language_instruction = (
-        "MANDATORY: Respond ONLY in Korean language for the entire output."
-        if lang == 'ko' else
-        "MANDATORY: Respond ONLY in English language for the entire output."
+    response = client.responses.create(
+        model="gpt-4.1-mini",
+        instructions=(
+            "You are a chemical safety specialist with expertise in MSDS interpretation. "
+            f"From the provided table data {table_data}, first extract and present only these fields if available: "
+            "casNo, chemId, chemNameKor, enNo, KeNO, lastDate, unNo, and Kosha confirmation status. "
+            "Then, using the extracted chemical data and the user query, generate a structured "
+            "CHEMICAL RISK ASSESSMENT with the following sections:\n\n"
+            "1. Chemical Properties & Hazards\n"
+            "   - Physical hazards (fire, explosion, reactivity) with frequency (1–5) and severity (1–4)\n"
+            "   - Health hazards (acute/chronic effects) with frequency and severity\n"
+            "   - Environmental hazards with frequency and severity\n"
+            "2. Likely Exposure Scenarios in the specified work context\n"
+            "3. PPE Matrix (detailing equipment per exposure route), (not necessary if not available)\n"
+            "4. Emergency Response Procedures\n"
+            "5. Risk Mitigation Hierarchy (elimination → substitution → engineering → administrative → PPE)\n\n"
+            "Reference relevant safety regulations where applicable. "
+            "Keep the output structured, precise, and actionable."
+            " If the user query is in Korean language, provide the output in Korean language."
+        ),
+        input=query,
     )
-
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        temperature=0.0,
-        messages=[{
-            "role": "system",
-            "content": (
-                f"{language_instruction}\n\n"
-                "CRITICAL INSTRUCTIONS FOR CHEMICAL DATA ACCURACY:\n"
-                "1. Extract chemicals ONLY from ■ Steel Plant section\n"
-                "2. Look for 'Special Management Substance: ○' markings\n"
-                "3. State exact monthly handling amounts from data\n"
-                "4. Include CAS numbers and chemical names exactly as shown\n"
-                "5. Identify measurement targets marked with '측정대상: ○'\n"
-                f"\n{validation_note}\n\n"
-                f"Chemical data to analyze:\n{table_data}\n\n"
-                "Response format:\n"
-                "- Start with: 'Based on steel plant chemical data analysis...'\n"
-                "- List actual chemicals with CAS numbers\n"
-                "- Include real monthly handling amounts (kg/ℓ)\n"
-                "- Identify Special Management Substances specifically\n"
-                "- Reference actual usage purposes from data\n"
-            )
-        }, {"role": "user", "content": query}],
-    )
-    return response.choices[0].message.content
+    return response.output_text
 
 
 @tool
@@ -544,6 +362,7 @@ def get_regulations_data(query: str) -> str:
     )
     retriever = qdrant.as_retriever(search_kwargs={"k": 30})
     retrieved_docs = retriever.invoke(query)
+    print("retrieved_docs",retrieved_docs)
     return retrieved_docs
 
 @tool
@@ -578,20 +397,10 @@ def dynamic_risk_assessment(query: str) -> str:
 def regulations_output(regulations_docs,query):
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-    lang = detect_language(query)
-    language_instruction = (
-        "MANDATORY: Respond ONLY in Korean language for the entire output."
-        if lang == 'ko' else
-        "MANDATORY: Respond ONLY in English language for the entire output."
-    )
-
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        temperature=0.2,
-        messages=[{
-            "role": "system",
-            "content": (
-                f"{language_instruction}\n\n"
+    response = client.responses.create(
+            model="gpt-4.1-mini",
+            temperature=0.2,
+            instructions=(
                 "You are a safety compliance expert familiar with Korean industrial safety regulations. "
                 f"From the provided data {regulations_docs}, extract only the information relevant to the user query. "
                 "Then, generate a comprehensive compliance assessment in the following exact format:\n\n"
@@ -616,56 +425,48 @@ def regulations_output(regulations_docs,query):
                 "• If specific regulations are not found in the data, indicate 'Not specified in available data'.\n"
                 "• Format as actionable checklist with specific deadlines and responsible parties when information is available.\n"
                 "• Ensure outputs are technically accurate, concise, and actionable.\n"
-            )
-        }, {"role": "user", "content": query}],
-    )
-    return response.choices[0].message.content
+                "• If the user query is in Korean language, provide the output in Korean language."
+            ),
+            input=query,
+        )
+    return response.output_text
 
 def dynamic_risk_assessment_output(risk_assessment_docs, query):
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-    lang = detect_language(query)
-    language_instruction = (
-        "MANDATORY: Respond ONLY in Korean language for the entire output."
-        if lang == 'ko' else
-        "MANDATORY: Respond ONLY in English language for the entire output."
-    )
-
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
+    response = client.responses.create(
+        model="gpt-4.1-mini",
         temperature=0.2,
-        messages=[{
-            "role": "system",
-            "content": (
-                f"{language_instruction}\n\n"
-                "You are an AI risk assessment engine trained on industrial safety data. Calculate dynamic risk scores using this multi-factor model:\n"
-                f"From the provided risk assessment data: {risk_assessment_docs}\n\n if no risk assessment data is available then provide the output through your knowledge in the following format:\n"
-                "CALCULATE RISK SCORE:\n"
-                "Base Risk Factors:\n"
-                "- Task complexity factor (1.0-2.0)\n"
-                "- Environmental conditions modifier (0.8-1.5)\n"
-                "- Worker experience level adjustment (0.7-1.3)\n"
-                "- Time pressure multiplier (1.0-1.5)\n"
-                "For Each Identified Hazard:\n"
-                "- Frequency Score: [1-5 with rationale]\n"
-                "- Severity Score: [1-4 with rationale]\n"
-                "- Detection Difficulty: [Easy/Moderate/Hard]\n"
-                "- Control Effectiveness: [percentage reduction]\n"
-                "Final Output:\n"
-                "- Inherent Risk Score: [calculation shown]\n"
-                "- Residual Risk Score: [after controls]\n"
-                "- Confidence Level: [High/Medium/Low based on data quality]\n"
-                "- Recommended Review Frequency: [Daily/Weekly/Monthly]\n"
-                "Provide specific justification for each score based on empirical data or established safety principles.\n\n"
-                "Requirements:\n"
-                "• If no relevant documents are found in the collection, still provide a comprehensive risk assessment using established safety principles.\n"
-                "• Always provide specific justification for each score based on available data or industry standards.\n"
-                "• Include confidence levels based on data quality and availability.\n"
-                "• Ensure outputs are technically accurate, concise, and actionable.\n"
-            )
-        }, {"role": "user", "content": query}],
+        instructions=(
+            "You are an AI risk assessment engine trained on industrial safety data. Calculate dynamic risk scores using this multi-factor model:\n"
+            f"From the provided risk assessment data: {risk_assessment_docs}\n\n if no risk assessment data is available then provide the output through your knowledge in the following format:\n"
+            "CALCULATE RISK SCORE:\n"
+            "Base Risk Factors:\n"
+            "- Task complexity factor (1.0-2.0)\n"
+            "- Environmental conditions modifier (0.8-1.5)\n"
+            "- Worker experience level adjustment (0.7-1.3)\n"
+            "- Time pressure multiplier (1.0-1.5)\n"
+            "For Each Identified Hazard:\n"
+            "- Frequency Score: [1-5 with rationale]\n"
+            "- Severity Score: [1-4 with rationale]\n"
+            "- Detection Difficulty: [Easy/Moderate/Hard]\n"
+            "- Control Effectiveness: [percentage reduction]\n"
+            "Final Output:\n"
+            "- Inherent Risk Score: [calculation shown]\n"
+            "- Residual Risk Score: [after controls]\n"
+            "- Confidence Level: [High/Medium/Low based on data quality]\n"
+            "- Recommended Review Frequency: [Daily/Weekly/Monthly]\n"
+            "Provide specific justification for each score based on empirical data or established safety principles.\n\n"
+            "Requirements:\n"
+            "• If no relevant documents are found in the collection, still provide a comprehensive risk assessment using established safety principles.\n"
+            "• Always provide specific justification for each score based on available data or industry standards.\n"
+            "• Include confidence levels based on data quality and availability.\n"
+            "• Ensure outputs are technically accurate, concise, and actionable.\n"
+            "• If the user query is in Korean language, provide the output in Korean language."
+        ),
+        input=query,
     )
-    return response.choices[0].message.content
+    return response.output_text
 
 tool_dict = {"get_accident_records":get_accident_records,"get_chemical_usage":get_chemical_usage,"get_risk_assessment":get_risk_assessment,"get_regulations_data":get_regulations_data,"get_chemical_details":get_chemical_details,"dynamic_risk_assessment":dynamic_risk_assessment}
 tools = [get_accident_records,get_chemical_usage,get_risk_assessment,get_regulations_data,get_chemical_details,dynamic_risk_assessment]
@@ -723,56 +524,22 @@ with col1:
 #     with st.chat_message(message.type):
 #         st.markdown(message.content)
 
-if user_query := st.chat_input("Ask a question about chemical usage, accidents, or risks / 화학 물질 사용, 사고 또는 위험에 대해 질문하세요"):
+if user_query := st.chat_input("Ask a question about chemical usage, accidents, or risks."):
     
     with st.chat_message("human"):
         st.markdown(user_query)
 
     with st.chat_message("ai"):
-        user_lang = detect_language(user_query)
-        with st.spinner("Thinking..." if user_lang == 'en' else "생각 중..."):
+        with st.spinner("Thinking..."):
             # Build context with recent chat history
-            language_instruction = (
-                "IMPORTANT: Respond ONLY in English language for ALL parts of your response."
-                if user_lang == 'en' else
-                "IMPORTANT: Respond ONLY in Korean language for ALL parts of your response."
-            )
             context_query = user_query
             if st.session_state.conversation_history:
                 # Get the last 3 conversations for context
                 recent_history = st.session_state.conversation_history[-3:] if len(st.session_state.conversation_history) >= 3 else st.session_state.conversation_history
                 history_context = "\n".join([f"Previous: User: {h['User']} | AI: {h['AI'][:200]}..." for h in recent_history])
-                context_query = f"Previous conversation context:\n{history_context}\n\nCurrent query: {context_query}"
+                context_query = f"Previous conversation context:\n{history_context}\n\nCurrent query: {user_query}"
             
-            accident_keywords = [
-                'safety improvement', 'accident', 'injury', 'incident',
-                'what happened', 'how many accidents', 'safety analysis',
-                '안전 개선', '사고', '부상', '재해', '위험 분석'
-            ]
-
-            # Enhanced system instruction with accident context if relevant
-            accident_context = ""
-            if any(keyword in user_query.lower() for keyword in accident_keywords):
-                try:
-                    accident_docs_ctx = get_accident_records(user_query)
-                    if accident_docs_ctx and len(accident_docs_ctx) > 100:
-                        accident_context = f"\n\nRELEVANT ACCIDENT DATA CONTEXT:\n{accident_docs_ctx[:2000]}..."
-                    else:
-                        accident_context = "\n\nNote: Limited accident data available in system."
-                except Exception as e:
-                    print(f"Error retrieving accident context: {e}")
-                    accident_context = "\n\nNote: Unable to retrieve accident data context."
-
-            system_instruction = (
-                f"{language_instruction}\n\n"
-                "IMPORTANT RULES:\n"
-                "1. When asked about safety improvements or accidents, use ACTUAL data\n"
-                "2. Reference specific incidents, never generic advice\n"
-                "3. Count real accidents and identify actual patterns\n"
-                "4. Mention specific dates, names, and locations from the data"
-                f"{accident_context}"
-            )
-            messages = [SystemMessage(content=system_instruction), HumanMessage(context_query)]
+            messages = [HumanMessage(context_query)]
             ai_msg = llm_with_tools.invoke(messages)
             print(ai_msg)
             messages.append(ai_msg)
@@ -792,23 +559,13 @@ if user_query := st.chat_input("Ask a question about chemical usage, accidents, 
                         output=chemical_output(table_data=table_data,query=user_query)
                     elif tool_name == "get_chemical_usage":
                         chemical_usage_docs=get_chemical_usage(user_query)
-                        # Validate chemical data quality
-                        is_valid, message = validate_chemical_data_quality(chemical_usage_docs)
-                        if not is_valid:
-                            output = f"Chemical data quality issue: {message}"
-                        else:
-                            output=chemical_output(table_data=chemical_usage_docs,query=user_query)
+                        output=chemical_output(table_data=chemical_usage_docs,query=user_query)
                     elif tool_name == "get_regulations_data":
                         regulations_docs=get_regulations_data(user_query)
                         output=regulations_output(regulations_docs=regulations_docs,query=user_query)
                     elif tool_name == "get_accident_records":
                         accident_docs=get_accident_records(user_query)
-                        # Validate data quality
-                        is_valid, message = validate_data_quality(accident_docs)
-                        if not is_valid:
-                            output = f"Data quality issue: {message}"
-                        else:
-                            output=accident_output(accident_docs=accident_docs,query=user_query)
+                        output=accident_output(accident_docs=accident_docs,query=user_query)
                     elif tool_name == "get_risk_assessment":
                         risk_assessment_docs=get_risk_assessment(user_query)
                         if "table" in user_query.lower() or "테이블" in user_query.lower():
