@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from typing import Optional, List, Dict, Any
+import cohere
 
 # Import all functions from streamlit_app
 from streamlit_app import (

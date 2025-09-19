@@ -1,4 +1,5 @@
 import os
+import cohere
 import streamlit as st
 from qdrant_client import models
 import qdrant_client
@@ -13,7 +14,15 @@ from langchain_qdrant import QdrantVectorStore
 from dotenv import load_dotenv
 import json
 import pandas as pd
+import re
+from typing import List, Dict, Any
+
+
 load_dotenv()
+
+# Initialize Cohere client
+
+co = cohere.ClientV2(api_key=os.getenv("COHERE_API_KEY"))
 
 llm = ChatOpenAI(model="gpt-4.1", temperature=0,api_key=os.getenv("OPENAI_API_KEY"))
 embeddings = OpenAIEmbeddings(openai_api_key=os.getenv("OPENAI_API_KEY"), model="text-embedding-3-large")
@@ -75,19 +84,40 @@ def get_accident_records(query: str) -> str:
     )
     retriever = qdrant.as_retriever(search_kwargs={"k": 30})
     retrieved_docs = retriever.invoke(query)
-    print("retrieved_docs",retrieved_docs)
+    # print("retrieved_docs",retrieved_docs)
+
+        # Apply Cohere reranking
+    if retrieved_docs:
+        # Convert retrieved docs to format expected by Cohere
+        docs = [doc.page_content for doc in retrieved_docs]
+        
+        # Rerank using Cohere
+        response = co.rerank(
+            model="rerank-v3.5",
+            query=query,
+            documents=docs,
+            top_n=5,
+        )
+        print("Cohere rerank response:", response)
+        
+        # Return reranked documents
+        reranked_docs = []
+        for result in response.results:
+            reranked_docs.append(retrieved_docs[result.index])
+        print("reranked_docs",reranked_docs)
+        
+    return reranked_docs
 
     # docs = [doc.payload['text'] for doc in retrieved_docs.points]
     # print("docs",docs)
     # return "\n\n".join(docs)
-    return retrieved_docs
 
 
 def accident_output(accident_docs,query):
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
     response = client.responses.create(
-            model="gpt-4.1-mini",
+            model="gpt-4.1",
             temperature=0.2,
             instructions=(
                 "You are an industrial safety analyst specializing in accident prevention. "
@@ -110,7 +140,7 @@ def accident_output(accident_docs,query):
                 "• Focus on actionable insights and preventive measures.\n"
                 "• Include specific accident patterns, causes, and lessons learned when available.\n"
                 "• Ensure outputs are technically accurate, concise, and actionable.\n"
-                "• If the user query is in Korean language, provide the output in Korean language."
+                "• If the user query is in Korean language, provide the output in Korean language, else provide in english."
             ),
             input=query,
         )
@@ -142,12 +172,34 @@ def get_chemical_usage(query: str) -> str:
     )
     retriever = qdrant.as_retriever(search_kwargs={"k": 30})
     retrieved_docs = retriever.invoke(query)
-    print("retrieved_docs",retrieved_docs)
+    # print("retrieved_docs",retrieved_docs)
+
+        # Apply Cohere reranking
+    if retrieved_docs:
+        # Convert retrieved docs to format expected by Cohere
+        docs = [doc.page_content for doc in retrieved_docs]
+        
+        # Rerank using Cohere
+        response = co.rerank(
+            model="rerank-v3.5",
+            query=query,
+            documents=docs,
+            top_n=5,
+        )
+        print("Cohere rerank response:", response)
+        
+        # Return reranked documents
+        reranked_docs = []
+        for result in response.results:
+            reranked_docs.append(retrieved_docs[result.index])
+        print("reranked_docs",reranked_docs)
+        
+    return reranked_docs
 
     # docs = [doc.payload['text'] for doc in retrieved_docs.points]
     # print("docs",docs)
     # return "\n\n".join(docs)
-    return retrieved_docs
+    # return retrieved_docs
 
 
 @tool
@@ -177,9 +229,30 @@ def get_risk_assessment(query: str) -> str:
     )
     retriever = qdrant.as_retriever(search_kwargs={"k": 30})
     retrieved_docs = retriever.invoke(query)
-    print("retrieved_docs",retrieved_docs)
+    # print("retrieved_docs",retrieved_docs)
+        # Apply Cohere reranking
+    if retrieved_docs:
+        # Convert retrieved docs to format expected by Cohere
+        docs = [doc.page_content for doc in retrieved_docs]
+        
+        # Rerank using Cohere
+        response = co.rerank(
+            model="rerank-v3.5",
+            query=query,
+            documents=docs,
+            top_n=5,
+        )
+        print("Cohere rerank response:", response)
+        
+        # Return reranked documents
+        reranked_docs = []
+        for result in response.results:
+            reranked_docs.append(retrieved_docs[result.index])
+        print("reranked_docs",reranked_docs)
+        
+    return reranked_docs
     # docs = [doc.payload['text'] for doc in retrieved_docs.points]
-    return retrieved_docs
+    # return retrieved_docs
 
 def risk_assessment_table_output(risk_assessment_docs, query):
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -222,8 +295,8 @@ Output Format:
 
     try:
         response = client.chat.completions.create(
-            model="gpt-4.1-mini",
-            temperature=0.2,
+            model="gpt-4.1",
+            temperature=0.1,
             messages=[{"role": "system", "content": json_instructions},
                       {"role": "user", "content": query}],
             response_format={"type": "json_object"}
@@ -257,8 +330,8 @@ def risk_assessment_output(risk_assessment_docs, query):
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
     response = client.responses.create(
-        model="gpt-4.1-mini",
-        temperature=0.2,
+        model="gpt-4.1",
+        temperature=0.1,
         instructions=(
             "You are a safety engineering expert specializing in industrial risk assessments. "
             f"From the provided {risk_assessment_docs}, extract only the information relevant to the user query. "
@@ -273,7 +346,7 @@ def risk_assessment_output(risk_assessment_docs, query):
             "• Always cite relevant safety regulations (e.g., KOSHA, ISO 45001).\n"
             "• Include specific MSDS data when chemicals are involved.\n"
             "• Ensure outputs are technically accurate, concise, and actionable."
-            "• If the user query is in Korean language, provide the output in Korean language."
+            "• If the user query is in Korean language, provide the output in Korean language, else provide in english."
         ),
         input=query,
     )
@@ -287,7 +360,7 @@ def get_chemical_details(query:str):
     """
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
     response = client.responses.create(
-        model="gpt-4.1-mini",
+        model="gpt-4.1",
         instructions="You are a helpful chemical identifier assistant. Your job is to identify the chemical name only and return me only chemical name single word, Response: Only one word chemical name, if no chemical name is avilable then return 'none'",
         input=query
     )
@@ -309,7 +382,8 @@ def chemical_output(table_data, query):
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
     response = client.responses.create(
-        model="gpt-4.1-mini",
+        model="gpt-4.1",
+        temperature=0.1,
         instructions=(
             "You are a chemical safety specialist with expertise in MSDS interpretation. "
             f"From the provided table data {table_data}, first extract and present only these fields if available: "
@@ -326,7 +400,7 @@ def chemical_output(table_data, query):
             "5. Risk Mitigation Hierarchy (elimination → substitution → engineering → administrative → PPE)\n\n"
             "Reference relevant safety regulations where applicable. "
             "Keep the output structured, precise, and actionable."
-            " If the user query is in Korean language, provide the output in Korean language."
+            " If the user query is in Korean language, provide the output in Korean language, else provide in english."
         ),
         input=query,
     )
@@ -362,8 +436,31 @@ def get_regulations_data(query: str) -> str:
     )
     retriever = qdrant.as_retriever(search_kwargs={"k": 30})
     retrieved_docs = retriever.invoke(query)
-    print("retrieved_docs",retrieved_docs)
-    return retrieved_docs
+    # print("retrieved_docs",retrieved_docs)
+    
+    # Apply Cohere reranking
+    if retrieved_docs:
+        # Convert retrieved docs to format expected by Cohere
+        docs = [doc.page_content for doc in retrieved_docs]
+        
+        # Rerank using Cohere
+        response = co.rerank(
+            model="rerank-v3.5",
+            query=query,
+            documents=docs,
+            top_n=5,
+        )
+        print("Cohere rerank response:", response)
+        
+        # Return reranked documents
+        reranked_docs = []
+        for result in response.results:
+            reranked_docs.append(retrieved_docs[result.index])
+        print("reranked_docs",reranked_docs)
+        
+    return reranked_docs
+    
+    #return retrieved_docs
 
 @tool
 def dynamic_risk_assessment(query: str) -> str:
@@ -391,15 +488,36 @@ def dynamic_risk_assessment(query: str) -> str:
     )
     retriever = qdrant.as_retriever(search_kwargs={"k": 30})
     retrieved_docs = retriever.invoke(query)
-    print("retrieved_docs",retrieved_docs)
-    return retrieved_docs
+    # print("retrieved_docs",retrieved_docs)
+
+        # Apply Cohere reranking
+    if retrieved_docs:
+        # Convert retrieved docs to format expected by Cohere
+        docs = [doc.page_content for doc in retrieved_docs]
+        
+        # Rerank using Cohere
+        response = co.rerank(
+            model="rerank-v3.5",
+            query=query,
+            documents=docs,
+            top_n=5,
+        )
+        print("Cohere rerank response:", response)
+        
+        # Return reranked documents
+        reranked_docs = []
+        for result in response.results:
+            reranked_docs.append(retrieved_docs[result.index])
+        print("reranked_docs",reranked_docs)
+        
+    return reranked_docs
 
 def regulations_output(regulations_docs,query):
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
     response = client.responses.create(
-            model="gpt-4.1-mini",
-            temperature=0.2,
+            model="gpt-4.1",
+            temperature=0.1,
             instructions=(
                 "You are a safety compliance expert familiar with Korean industrial safety regulations. "
                 f"From the provided data {regulations_docs}, extract only the information relevant to the user query. "
@@ -425,7 +543,7 @@ def regulations_output(regulations_docs,query):
                 "• If specific regulations are not found in the data, indicate 'Not specified in available data'.\n"
                 "• Format as actionable checklist with specific deadlines and responsible parties when information is available.\n"
                 "• Ensure outputs are technically accurate, concise, and actionable.\n"
-                "• If the user query is in Korean language, provide the output in Korean language."
+                "• If the user query is in Korean language, provide the output in Korean language, else provide in english."
             ),
             input=query,
         )
@@ -435,8 +553,8 @@ def dynamic_risk_assessment_output(risk_assessment_docs, query):
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
     response = client.responses.create(
-        model="gpt-4.1-mini",
-        temperature=0.2,
+        model="gpt-4.1",
+        temperature=0.1,
         instructions=(
             "You are an AI risk assessment engine trained on industrial safety data. Calculate dynamic risk scores using this multi-factor model:\n"
             f"From the provided risk assessment data: {risk_assessment_docs}\n\n if no risk assessment data is available then provide the output through your knowledge in the following format:\n"
@@ -462,7 +580,7 @@ def dynamic_risk_assessment_output(risk_assessment_docs, query):
             "• Always provide specific justification for each score based on available data or industry standards.\n"
             "• Include confidence levels based on data quality and availability.\n"
             "• Ensure outputs are technically accurate, concise, and actionable.\n"
-            "• If the user query is in Korean language, provide the output in Korean language."
+            "• If the user query is in Korean language, provide the output in Korean language, else provide in english."
         ),
         input=query,
     )
