@@ -8,6 +8,7 @@ from tabulate import tabulate
 import requests
 from openai import OpenAI
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langchain_anthropic import ChatAnthropic
 from langchain_core.tools import tool
 from langchain_core.messages import HumanMessage
 from langchain_qdrant import QdrantVectorStore
@@ -513,6 +514,10 @@ def dynamic_risk_assessment(query: str) -> str:
     return reranked_docs
 
 def regulations_output(regulations_docs,query):
+
+    llm_cite= ChatAnthropic(model="claude-3-5-sonnet-20240620",api_key=os.getenv("ANTHROPIC_API_KEY"))
+
+    llm_cite_response = llm_cite.invoke(f"From the provided data {regulations_docs}, extract only the information relevant to the user query. Then, generate a comprehensive compliance assessment in the following exact format:\n\n")
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
     response = client.responses.create(
