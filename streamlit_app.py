@@ -12,6 +12,8 @@ from langchain_anthropic import ChatAnthropic
 from langchain_core.tools import tool
 from langchain_core.messages import HumanMessage
 from langchain_qdrant import QdrantVectorStore
+from langchain_cohere import CohereRerank
+from langchain.retrievers import ContextualCompressionRetriever
 from dotenv import load_dotenv
 import json
 import pandas as pd
@@ -22,8 +24,10 @@ from typing import List, Dict, Any
 load_dotenv()
 
 # Initialize Cohere client
+COHERE_RERANKER_MODEL="rerank-v3.5"
+compressor = CohereRerank(cohere_api_key=os.getenv("COHERE_API_KEY"), model=COHERE_RERANKER_MODEL, top_n=10)
 
-co = cohere.ClientV2(api_key=os.getenv("COHERE_API_KEY"))
+#co = cohere.ClientV2(api_key=os.getenv("COHERE_API_KEY"))
 
 llm = ChatOpenAI(model="gpt-4.1", temperature=0,api_key=os.getenv("OPENAI_API_KEY"))
 embeddings = OpenAIEmbeddings(openai_api_key=os.getenv("OPENAI_API_KEY"), model="text-embedding-3-large")
@@ -85,66 +89,87 @@ def get_accident_records(query: str) -> str:
     )
     retriever = qdrant.as_retriever(search_kwargs={"k": 30})
     retrieved_docs = retriever.invoke(query)
+    compression_retriever = ContextualCompressionRetriever(
+        base_compressor=compressor,
+        base_retriever=retriever)
+    docs=compression_retriever.invoke(query)
     # print("retrieved_docs",retrieved_docs)
 
-        # Apply Cohere reranking
-    if retrieved_docs:
-        # Convert retrieved docs to format expected by Cohere
-        docs = [doc.page_content for doc in retrieved_docs]
+    #     # Apply Cohere reranking
+    # if retrieved_docs:
+    #     # Convert retrieved docs to format expected by Cohere
+    #     docs = [doc.page_content for doc in retrieved_docs]
         
-        # Rerank using Cohere
-        response = co.rerank(
-            model="rerank-v3.5",
-            query=query,
-            documents=docs,
-            top_n=5,
-        )
-        print("Cohere rerank response:", response)
+    #     # Rerank using Cohere
+    #     response = co.rerank(
+    #         model="rerank-v3.5",
+    #         query=query,
+    #         documents=docs,
+    #         top_n=5,
+    #     )
+    #     print("Cohere rerank response:", response)
         
-        # Return reranked documents
-        reranked_docs = []
-        for result in response.results:
-            reranked_docs.append(retrieved_docs[result.index])
-        print("reranked_docs",reranked_docs)
+    #     # Return reranked documents
+    #     reranked_docs = []
+    #     for result in response.results:
+    #         reranked_docs.append(retrieved_docs[result.index])
+    #     print("reranked_docs",reranked_docs)
         
-    return reranked_docs
+    # return reranked_docs
 
     # docs = [doc.payload['text'] for doc in retrieved_docs.points]
     # print("docs",docs)
-    # return "\n\n".join(docs)
+    return (docs)
 
 
 def accident_output(accident_docs,query):
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
     response = client.responses.create(
-            model="gpt-4.1",
-            temperature=0.2,
-            instructions=(
-                "You are an industrial safety analyst specializing in accident prevention. "
-                f"From the provided accident data {accident_docs}, extract only the information relevant to the user query. "
-                "Then, analyze potential incidents and generate a comprehensive risk profile in the following exact format:\n\n"
-                "INCIDENT RISK PROFILE:\n"
-                "- Similar Historical Incidents: [search accident database patterns]\n"
-                "- Probability Assessment:\n"
-                "  * Base rate from historical data: [%]\n"
-                "  * Adjusted for current conditions: [1-5 scale]\n"
-                "- Potential Severity Outcomes:\n"
-                "  * Most likely scenario: [severity 1-4]\n"
-                "  * Worst case scenario: [severity 1-4]\n"
-                "- Critical Control Points: [specific moments/actions where incidents typically occur]\n"
-                "- Leading Indicators to Monitor: [measurable precursors]\n"
-                "- Recommended Safety Barriers: [prevention and mitigation layers]\n\n"
-                "Requirements:\n"
-                "• Provide confidence levels (High/Medium/Low) for each assessment based on data availability.\n"
-                "• If specific accident data is not found, indicate 'No relevant historical data available'.\n"
-                "• Focus on actionable insights and preventive measures.\n"
-                "• Include specific accident patterns, causes, and lessons learned when available.\n"
-                "• Ensure outputs are technically accurate, concise, and actionable.\n"
-                "• If the user query is in Korean language, provide the output in Korean language, else provide in english."
-            ),
-            input=query,
-        )
+        model="gpt-4.1",
+        temperature=0.2,
+        instructions=(
+            "You are an expert industrial safety analyst specializing in accident prevention and risk assessment. "
+            f"Analyze the provided accident data: {accident_docs}\n"
+            "Extract only information relevant to the user query and generate a comprehensive incident risk profile.\n\n"
+            
+            "INCIDENT RISK PROFILE\n\n"
+            
+            "HISTORICAL INCIDENT ANALYSIS\n"
+            "- Similar Incidents: [identify patterns from accident database]\n"
+            "- Frequency Trends: [how often similar incidents occur]\n"
+            "- Common Factors: [shared characteristics across incidents]\n\n"
+            
+            "PROBABILITY ASSESSMENT\n"
+            "- Base Rate: [% from historical data with confidence level]\n"
+            "- Current Conditions: [1-5 scale adjustment with justification]\n"
+            "- Overall Risk Level: [Low/Medium/High/Critical]\n\n"
+            
+            "SEVERITY OUTCOMES\n"
+            "- Most Likely Scenario: [severity 1-4 with description]\n"
+            "- Worst Case Scenario: [severity 1-4 with description]\n"
+            "- Impact Assessment: [physical, financial, operational impacts]\n\n"
+            
+            "CRITICAL CONTROL POINTS\n"
+            "- High-Risk Moments: [specific times/actions when incidents occur]\n"
+            "- Vulnerable Processes: [processes most susceptible to accidents]\n"
+            "- Human Factors: [behavioral or procedural risk factors]\n\n"
+            
+            "MONITORING AND PREVENTION\n"
+            "- Leading Indicators: [measurable precursors to watch for]\n"
+            "- Safety Barriers: [prevention and mitigation layers]\n"
+            "- Emergency Response: [immediate actions if incident occurs]\n\n"
+            
+            "Requirements:\n"
+            "- Provide confidence levels (High/Medium/Low) for each assessment\n"
+            "- If no relevant data found, state 'No relevant historical data available'\n"
+            "- Focus on actionable insights and specific preventive measures\n"
+            "- Include accident patterns, root causes, and lessons learned\n"
+            "- Ensure technical accuracy and practical applicability\n"
+            "- If user query is in Korean, provide output in Korean; otherwise use English"
+        ),
+        input=query,
+    )
     return response.output_text
 
 @tool
@@ -173,33 +198,37 @@ def get_chemical_usage(query: str) -> str:
     )
     retriever = qdrant.as_retriever(search_kwargs={"k": 30})
     retrieved_docs = retriever.invoke(query)
+    compression_retriever = ContextualCompressionRetriever(
+        base_compressor=compressor,
+        base_retriever=retriever)
+    docs=compression_retriever.invoke(query)
     # print("retrieved_docs",retrieved_docs)
 
         # Apply Cohere reranking
-    if retrieved_docs:
-        # Convert retrieved docs to format expected by Cohere
-        docs = [doc.page_content for doc in retrieved_docs]
+    # if retrieved_docs:
+    #     # Convert retrieved docs to format expected by Cohere
+    #     docs = [doc.page_content for doc in retrieved_docs]
         
-        # Rerank using Cohere
-        response = co.rerank(
-            model="rerank-v3.5",
-            query=query,
-            documents=docs,
-            top_n=5,
-        )
-        print("Cohere rerank response:", response)
+    #     # Rerank using Cohere
+    #     response = co.rerank(
+    #         model="rerank-v3.5",
+    #         query=query,
+    #         documents=docs,
+    #         top_n=5,
+    #     )
+    #     print("Cohere rerank response:", response)
         
-        # Return reranked documents
-        reranked_docs = []
-        for result in response.results:
-            reranked_docs.append(retrieved_docs[result.index])
-        print("reranked_docs",reranked_docs)
+    #     # Return reranked documents
+    #     reranked_docs = []
+    #     for result in response.results:
+    #         reranked_docs.append(retrieved_docs[result.index])
+    #     print("reranked_docs",reranked_docs)
         
-    return reranked_docs
+    # return reranked_docs
 
     # docs = [doc.payload['text'] for doc in retrieved_docs.points]
     # print("docs",docs)
-    # return "\n\n".join(docs)
+    return (docs)
     # return retrieved_docs
 
 
@@ -229,49 +258,58 @@ def get_risk_assessment(query: str) -> str:
     timeout=120
     )
     retriever = qdrant.as_retriever(search_kwargs={"k": 30})
-    retrieved_docs = retriever.invoke(query)
-    # print("retrieved_docs",retrieved_docs)
-        # Apply Cohere reranking
-    if retrieved_docs:
-        # Convert retrieved docs to format expected by Cohere
-        docs = [doc.page_content for doc in retrieved_docs]
+    compression_retriever = ContextualCompressionRetriever(
+        base_compressor=compressor,
+        base_retriever=retriever)
+    docs=compression_retriever.invoke(query)
+    # retriever = qdrant.as_retriever(search_kwargs={"k": 30})
+    # retrieved_docs = retriever.invoke(query)
+    # # print("retrieved_docs",retrieved_docs)
+    #     # Apply Cohere reranking
+    # if retrieved_docs:
+    #     # Convert retrieved docs to format expected by Cohere
+    #     docs = [doc.page_content for doc in retrieved_docs]
         
-        # Rerank using Cohere
-        response = co.rerank(
-            model="rerank-v3.5",
-            query=query,
-            documents=docs,
-            top_n=5,
-        )
-        print("Cohere rerank response:", response)
+    #     # Rerank using Cohere
+    #     response = co.rerank(
+    #         model="rerank-v3.5",
+    #         query=query,
+    #         documents=docs,
+    #         top_n=5,
+    #     )
+    #     print("Cohere rerank response:", response)
         
-        # Return reranked documents
-        reranked_docs = []
-        for result in response.results:
-            reranked_docs.append(retrieved_docs[result.index])
-        print("reranked_docs",reranked_docs)
+    #     # Return reranked documents
+    #     reranked_docs = []
+    #     for result in response.results:
+    #         reranked_docs.append(retrieved_docs[result.index])
+    #     print("reranked_docs",reranked_docs)
         
-    return reranked_docs
+    # return reranked_docs
     # docs = [doc.payload['text'] for doc in retrieved_docs.points]
-    # return retrieved_docs
+    return (docs)
 
 def risk_assessment_table_output(risk_assessment_docs, query):
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
     
     # Create structured prompt for JSON output
     json_instructions = f"""
-You are a safety engineering expert specializing in industrial risk assessments. Your task is to analyze the provided risk assessment documents: {risk_assessment_docs}
+You are a safety engineering expert specializing in industrial risk assessments. 
+Analyze the provided risk assessment documents: {risk_assessment_docs}
 
 Instructions:
-- Always return the output in strict JSON format.
-- Use the predefined field names exactly as listed below.
-- If data cannot be found, set the field value to "N/A".
-- If no structured data is available at all, return a JSON object with all fields set to "N/A".
-- Do not include explanations, extra text, or markdown—only JSON.
+- Always return the output in strict JSON format
+- Use the predefined field names exactly as listed below
+- If data cannot be found, set the field value to "N/A"
+- If no structured data is available at all, return a JSON object with all fields set to "N/A"
+- Do not include explanations, extra text, or markdown—only JSON
 - Provide whole table 
 - If the user query is in korean language then provide the output table in korean language
 - Extract only the information relevant to the user query
 - Generate a comprehensive risk assessment with the specified format
+- Include specific, actionable recommendations for each risk assessment
+- If the user query is in korean language then provide the output in korean language
+- Include specific, actionable recommendations for each risk assessment
 
 Output Format:
 [
@@ -334,20 +372,51 @@ def risk_assessment_output(risk_assessment_docs, query):
         model="gpt-4.1",
         temperature=0.1,
         instructions=(
-            "You are a safety engineering expert specializing in industrial risk assessments. "
-            f"From the provided {risk_assessment_docs}, extract only the information relevant to the user query. "
-            "Then, generate a comprehensive risk assessment in the following exact format:\n\n"
-            "- Task/Process Name: [specific work being performed]\n"
-            "- Hazard Identification: [list 3–5 specific hazards]\n"
-            "- Current Risk Level: [Frequency (1–5)] x [Severity (1–4)] = [Risk Score]\n"
-            "- Root Causes: [underlying reasons for each hazard]\n"
-            "- Control Measures: [specific preventive/protective actions]\n"
-            "- Residual Risk After Controls: [new Frequency] x [new Severity] = [new Risk Score]\n\n"
+            "You are an expert safety engineering specialist specializing in industrial risk assessments. "
+            f"Analyze the provided risk assessment data: {risk_assessment_docs}\n"
+            "Extract only information relevant to the user query and generate a comprehensive risk assessment.\n\n"
+            
+            "RISK ASSESSMENT ANALYSIS\n\n"
+            
+            "TASK/PROCESS IDENTIFICATION\n"
+            "- Work Description: [specific work being performed]\n"
+            "- Process Context: [work environment and conditions]\n\n"
+            
+            "HAZARD IDENTIFICATION\n"
+            "- Primary Hazards: [list 3-5 specific hazards]\n"
+            "- Hazard Categories: [physical, chemical, biological, ergonomic]\n"
+            "- Risk Factors: [contributing elements to each hazard]\n\n"
+            
+            "RISK EVALUATION\n"
+            "- Frequency Assessment: [1-5 scale with justification]\n"
+            "- Severity Assessment: [1-4 scale with justification]\n"
+            "- Risk Score: [Frequency x Severity = Total Score]\n"
+            "- Risk Level: [Low/Medium/High/Critical]\n\n"
+            
+            "ROOT CAUSE ANALYSIS\n"
+            "- Immediate Causes: [direct factors contributing to hazards]\n"
+            "- Underlying Causes: [systemic or organizational factors]\n"
+            "- Contributing Factors: [environmental, human, equipment factors]\n\n"
+            
+            "CONTROL MEASURES\n"
+            "- Elimination: [ways to completely remove the hazard]\n"
+            "- Substitution: [safer alternatives or processes]\n"
+            "- Engineering Controls: [physical barriers, ventilation, automation]\n"
+            "- Administrative Controls: [procedures, training, work practices]\n"
+            "- Personal Protective Equipment: [specific PPE requirements]\n\n"
+            
+            "RESIDUAL RISK ASSESSMENT\n"
+            "- Improved Frequency: [1-5 scale after controls]\n"
+            "- Improved Severity: [1-4 scale after controls]\n"
+            "- Residual Risk Score: [New Frequency x New Severity]\n"
+            "- Acceptability: [Acceptable/Unacceptable with justification]\n\n"
+            
             "Requirements:\n"
-            "• Always cite relevant safety regulations (e.g., KOSHA, ISO 45001).\n"
-            "• Include specific MSDS data when chemicals are involved.\n"
-            "• Ensure outputs are technically accurate, concise, and actionable."
-            "• If the user query is in Korean language, provide the output in Korean language, else provide in english."
+            "- Always cite relevant safety regulations (KOSHA, ISO 45001, OSHA)\n"
+            "- Include specific MSDS data when chemicals are involved\n"
+            "- Provide quantitative risk scores with clear calculations\n"
+            "- Ensure outputs are technically accurate, concise, and actionable\n"
+            "- If user query is in Korean, provide output in Korean; otherwise use English"
         ),
         input=query,
     )
@@ -391,17 +460,35 @@ def chemical_output(table_data, query):
             "casNo, chemId, chemNameKor, enNo, KeNO, lastDate, unNo, and Kosha confirmation status. "
             "Then, using the extracted chemical data and the user query, generate a structured "
             "CHEMICAL RISK ASSESSMENT with the following sections:\n\n"
-            "1. Chemical Properties & Hazards\n"
-            "   - Physical hazards (fire, explosion, reactivity) with frequency (1–5) and severity (1–4)\n"
-            "   - Health hazards (acute/chronic effects) with frequency and severity\n"
-            "   - Environmental hazards with frequency and severity\n"
-            "2. Likely Exposure Scenarios in the specified work context\n"
-            "3. PPE Matrix (detailing equipment per exposure route), (not necessary if not available)\n"
-            "4. Emergency Response Procedures\n"
-            "5. Risk Mitigation Hierarchy (elimination → substitution → engineering → administrative → PPE)\n\n"
+            
+            "CHEMICAL IDENTIFICATION\n"
+            "- CAS Number: [extract casNo if available]\n"
+            "- Chemical ID: [extract chemId if available]\n"
+            "- Korean Name: [extract chemNameKor if available]\n"
+            "- EN Number: [extract enNo if available]\n"
+            "- Korea EN Number: [extract KeNO if available]\n"
+            "- Last Update: [extract lastDate if available]\n"
+            "- UN Number: [extract unNo if available]\n"
+            "- KOSHA Status: [extract confirmation status if available]\n\n"
+            
+            "CHEMICAL HAZARDS\n"
+            "- Physical Hazards: [fire, explosion, reactivity] with frequency (1-5) and severity (1-4)\n"
+            "- Health Hazards: [acute/chronic effects] with frequency and severity\n"
+            "- Environmental Hazards: [water, air, soil contamination] with frequency and severity\n\n"
+            
+            "EXPOSURE SCENARIOS\n"
+            "- Work Context: [specific exposure scenarios in work environment]\n"
+            "- Exposure Routes: [inhalation, skin contact, ingestion]\n"
+            "- Risk Level: [Low/Medium/High based on exposure]\n\n"
+            
+            "SAFETY MEASURES\n"
+            "- PPE Requirements: [respiratory, skin, eye protection]\n"
+            "- Emergency Response: [spill, fire, first aid procedures]\n"
+            "- Control Measures: [elimination → substitution → engineering → administrative → PPE]\n\n"
+            
             "Reference relevant safety regulations where applicable. "
-            "Keep the output structured, precise, and actionable."
-            " If the user query is in Korean language, provide the output in Korean language, else provide in english."
+            "Keep the output structured, precise, and actionable. "
+            "If the user query is in Korean language, provide the output in Korean language, else provide in english."
         ),
         input=query,
     )
@@ -438,30 +525,34 @@ def get_regulations_data(query: str) -> str:
     retriever = qdrant.as_retriever(search_kwargs={"k": 30})
     retrieved_docs = retriever.invoke(query)
     # print("retrieved_docs",retrieved_docs)
+
+    compression_retriever = ContextualCompressionRetriever(
+        base_compressor=compressor,
+        base_retriever=retriever)
+    docs=compression_retriever.invoke(query)
+    # # Apply Cohere reranking
+    # if retrieved_docs:
+    #     # Convert retrieved docs to format expected by Cohere
+    #     docs = [doc.page_content for doc in retrieved_docs]
+        
+    #     # Rerank using Cohere
+    #     response = co.rerank(
+    #         model="rerank-v3.5",
+    #         query=query,
+    #         documents=docs,
+    #         top_n=5,
+    #     )
+    #     print("Cohere rerank response:", response)
+        
+    #     # Return reranked documents
+    #     reranked_docs = []
+    #     for result in response.results:
+    #         reranked_docs.append(retrieved_docs[result.index])
+    #     print("reranked_docs",reranked_docs)
+        
+    # return reranked_docs
     
-    # Apply Cohere reranking
-    if retrieved_docs:
-        # Convert retrieved docs to format expected by Cohere
-        docs = [doc.page_content for doc in retrieved_docs]
-        
-        # Rerank using Cohere
-        response = co.rerank(
-            model="rerank-v3.5",
-            query=query,
-            documents=docs,
-            top_n=5,
-        )
-        print("Cohere rerank response:", response)
-        
-        # Return reranked documents
-        reranked_docs = []
-        for result in response.results:
-            reranked_docs.append(retrieved_docs[result.index])
-        print("reranked_docs",reranked_docs)
-        
-    return reranked_docs
-    
-    #return retrieved_docs
+    return (docs)
 
 @tool
 def dynamic_risk_assessment(query: str) -> str:
@@ -489,30 +580,35 @@ def dynamic_risk_assessment(query: str) -> str:
     )
     retriever = qdrant.as_retriever(search_kwargs={"k": 30})
     retrieved_docs = retriever.invoke(query)
+    compression_retriever = ContextualCompressionRetriever(
+        base_compressor=compressor,
+        base_retriever=retriever)
+    docs=compression_retriever.invoke(query)
     # print("retrieved_docs",retrieved_docs)
 
         # Apply Cohere reranking
-    if retrieved_docs:
-        # Convert retrieved docs to format expected by Cohere
-        docs = [doc.page_content for doc in retrieved_docs]
+    # if retrieved_docs:
+    #     # Convert retrieved docs to format expected by Cohere
+    #     docs = [doc.page_content for doc in retrieved_docs]
         
-        # Rerank using Cohere
-        response = co.rerank(
-            model="rerank-v3.5",
-            query=query,
-            documents=docs,
-            top_n=5,
-        )
-        print("Cohere rerank response:", response)
+    #     # Rerank using Cohere
+    #     response = co.rerank(
+    #         model="rerank-v3.5",
+    #         query=query,
+    #         documents=docs,
+    #         top_n=5,
+    #     )
+    #     print("Cohere rerank response:", response)
         
-        # Return reranked documents
-        reranked_docs = []
-        for result in response.results:
-            reranked_docs.append(retrieved_docs[result.index])
-        print("reranked_docs",reranked_docs)
+    #     # Return reranked documents
+    #     reranked_docs = []
+    #     for result in response.results:
+    #         reranked_docs.append(retrieved_docs[result.index])
+    #     print("reranked_docs",reranked_docs)
         
-    return reranked_docs
-
+    # return reranked_docs
+    return (docs)
+    
 def regulations_output(regulations_docs,query):
 
     llm_cite= ChatAnthropic(model="claude-3-5-sonnet-20240620",api_key=os.getenv("ANTHROPIC_API_KEY"))
@@ -521,37 +617,39 @@ def regulations_output(regulations_docs,query):
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
     response = client.responses.create(
-            model="gpt-4.1",
-            temperature=0.1,
-            instructions=(
-                "You are a safety compliance expert familiar with Korean industrial safety regulations. "
-                f"From the provided data {regulations_docs}, extract only the information relevant to the user query. "
-                "Then, generate a comprehensive compliance assessment in the following exact format:\n\n"
-                "COMPLIANCE ASSESSMENT OUTPUT:\n"
-                "1. Applicable Regulations:\n"
-                "   - Primary: [specific act/regulation with article numbers]\n"
-                "   - Secondary: [related standards and codes]\n"
-                "2. Mandatory Requirements:\n"
-                "   - Documentation needed\n"
-                "   - Permits/certifications required\n"
-                "   - Training prerequisites\n"
-                "   - Safety equipment specifications\n"
-                "3. Compliance Gaps Analysis:\n"
-                "   - Current status vs. requirements\n"
-                "   - Risk level if non-compliant [1-5 frequency] x [1-4 severity]\n"
-                "4. Remediation Priority:\n"
-                "   - Immediate actions (legal must-dos)\n"
-                "   - Short-term improvements (1-30 days)\n"
-                "   - Long-term enhancements (30+ days)\n\n"
-                "Requirements:\n"
-                "• Always cite specific Korean safety regulations (KOSHA, Industrial Safety and Health Act, etc.) with article numbers when available.\n"
-                "• If specific regulations are not found in the data, indicate 'Not specified in available data'.\n"
-                "• Format as actionable checklist with specific deadlines and responsible parties when information is available.\n"
-                "• Ensure outputs are technically accurate, concise, and actionable.\n"
-                "• If the user query is in Korean language, provide the output in Korean language, else provide in english."
-            ),
-            input=query,
-        )
+        model="gpt-4.1",
+        temperature=0.1,
+        instructions=(
+            "You are a safety compliance expert familiar with Korean industrial safety regulations. "
+            f"From the provided data {regulations_docs}, extract only the information relevant to the user query. "
+            "Then, generate a comprehensive compliance assessment in the following format:\n\n"
+            
+            "COMPLIANCE ASSESSMENT OUTPUT:\n"
+            "1. Applicable Regulations:\n"
+            "   - Primary: [specific act/regulation with article numbers]\n"
+            "   - Secondary: [related standards and codes]\n"
+            "2. Mandatory Requirements:\n"
+            "   - Documentation needed\n"
+            "   - Permits/certifications required\n"
+            "   - Training prerequisites\n"
+            "   - Safety equipment specifications\n"
+            "3. Compliance Gaps Analysis:\n"
+            "   - Current status vs. requirements\n"
+            "   - Risk level if non-compliant [1-5 frequency] x [1-4 severity]\n"
+            "4. Remediation Priority:\n"
+            "   - Immediate actions (legal must-dos)\n"
+            "   - Short-term improvements (1-30 days)\n"
+            "   - Long-term enhancements (30+ days)\n\n"
+            
+            "Requirements:\n"
+            "- Always cite specific Korean safety regulations (KOSHA, Industrial Safety and Health Act, etc.) with article numbers when available\n"
+            "- If specific regulations are not found in the data, indicate 'Not specified in available data'\n"
+            "- Format as actionable checklist with specific deadlines and responsible parties when information is available\n"
+            "- Ensure outputs are technically accurate, concise, and actionable\n"
+            "- If the user query is in Korean language, provide the output in Korean language, else provide in english."
+        ),
+        input=query,
+    )
     return response.output_text
 
 def dynamic_risk_assessment_output(risk_assessment_docs, query):
@@ -563,6 +661,7 @@ def dynamic_risk_assessment_output(risk_assessment_docs, query):
         instructions=(
             "You are an AI risk assessment engine trained on industrial safety data. Calculate dynamic risk scores using this multi-factor model:\n"
             f"From the provided risk assessment data: {risk_assessment_docs}\n\n if no risk assessment data is available then provide the output through your knowledge in the following format:\n"
+            
             "CALCULATE RISK SCORE:\n"
             "Base Risk Factors:\n"
             "- Task complexity factor (1.0-2.0)\n"
@@ -580,12 +679,13 @@ def dynamic_risk_assessment_output(risk_assessment_docs, query):
             "- Confidence Level: [High/Medium/Low based on data quality]\n"
             "- Recommended Review Frequency: [Daily/Weekly/Monthly]\n"
             "Provide specific justification for each score based on empirical data or established safety principles.\n\n"
+            
             "Requirements:\n"
-            "• If no relevant documents are found in the collection, still provide a comprehensive risk assessment using established safety principles.\n"
-            "• Always provide specific justification for each score based on available data or industry standards.\n"
-            "• Include confidence levels based on data quality and availability.\n"
-            "• Ensure outputs are technically accurate, concise, and actionable.\n"
-            "• If the user query is in Korean language, provide the output in Korean language, else provide in english."
+            "- If no relevant documents are found in the collection, still provide a comprehensive risk assessment using established safety principles\n"
+            "- Always provide specific justification for each score based on available data or industry standards\n"
+            "- Include confidence levels based on data quality and availability\n"
+            "- Ensure outputs are technically accurate, concise, and actionable\n"
+            "- If the user query is in Korean language, provide the output in Korean language, else provide in english."
         ),
         input=query,
     )
@@ -703,7 +803,7 @@ if user_query := st.chat_input("Ask a question about chemical usage, accidents, 
                                     json_data = [json_data]
                                 df = pd.DataFrame(json_data)
                                 st.subheader("📊 Risk Assessment Analysis")
-                                st.dataframe(df, use_container_width=True, hide_index=True)
+                                st.dataframe(df, width=None, hide_index=True)
                                 output = f"Retrieved {len(json_data)} risk assessment records"
                             else:
                                 st.error("No valid risk assessment data to display")
