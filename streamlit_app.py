@@ -721,7 +721,7 @@ def risk_assessment_output(risk_assessment_docs, query):
 def get_chemical_details(query:str):
     """
     This tool should be used when user want to extract any information about chemicals
-    Example query: 'What is cas no of oxygen', 'what is chemical ID of nitrogen'.
+    Example query: 'What is cas no of oxygen', 'what is chemical ID of nitrogen', 'Identify chemicals', 'Which chemical in the dataset'.
     """
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
     response = client.responses.create(
