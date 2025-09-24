@@ -270,6 +270,13 @@ def accident_output(accident_docs,query):
             - **Low Confidence:** Limited data (<5 incidents), high uncertainty, extrapolated estimates
             
             Always ensure technical accuracy, evidence-based analysis, and actionable prevention recommendations while maintaining strict adherence to the language policy.
+            
+            ## CITATION REQUIREMENTS
+            - At the end of your response, provide a "SOURCES" section
+            - List specific document excerpts or data points used in your analysis
+            - Include relevant page numbers, document titles, or section references when available
+            - Format: "Source: [specific excerpt or data point from the provided accident documentation]"
+            - If no specific sources are available, state: "Source: General industry knowledge and safety standards"
             """
         ),
         input=query,
@@ -711,6 +718,13 @@ def risk_assessment_output(risk_assessment_docs, query):
             - Use conservative estimates with appropriate confidence indicators
             
             Always ensure technical accuracy, regulatory awareness, and actionable risk management recommendations while maintaining strict adherence to the language policy.
+            
+            ## CITATION REQUIREMENTS
+            - At the end of your response, provide a "SOURCES" section
+            - List specific document excerpts or data points used in your analysis
+            - Include relevant page numbers, document titles, or section references when available
+            - Format: "Source: [specific excerpt or data point from the provided risk assessment documentation]"
+            - If no specific sources are available, state: "Source: General industry knowledge and safety standards"
             """
         ),
         input=query,
@@ -878,6 +892,13 @@ def chemical_output(table_data, query):
             - Base risk assessments on available information with appropriate confidence levels
             
             Always ensure technical accuracy, regulatory compliance awareness, and actionable safety recommendations while maintaining strict adherence to the language policy.
+            
+            ## CITATION REQUIREMENTS
+            - At the end of your response, provide a "SOURCES" section
+            - List specific document excerpts or data points used in your analysis
+            - Include relevant page numbers, document titles, or section references when available
+            - Format: "Source: [specific excerpt or data point from the provided chemical table data]"
+            - If no specific sources are available, state: "Source: General industry knowledge and safety standards"
             """
         ),
         input=query,
@@ -1111,6 +1132,13 @@ def regulations_output(regulations_docs,query):
         - Indicate lower confidence levels where appropriate
         
         Always ensure technical accuracy and actionable recommendations while maintaining strict adherence to the language policy.
+        
+        ## CITATION REQUIREMENTS
+        - At the end of your response, provide a "SOURCES" section
+        - List specific document excerpts or data points used in your analysis
+        - Include relevant page numbers, document titles, or section references when available
+        - Format: "Source: [specific excerpt or data point from the provided regulatory documentation]"
+        - If no specific sources are available, state: "Source: General industry knowledge and safety standards"
         """
         ),
         input=query,
@@ -1219,6 +1247,13 @@ def dynamic_risk_assessment_output(risk_assessment_docs, query):
             - Recommend specific data collection for future assessments
             
             Always ensure technical accuracy, conciseness, and actionable recommendations while maintaining strict adherence to the language policy.
+            
+            ## CITATION REQUIREMENTS
+            - At the end of your response, provide a "SOURCES" section
+            - List specific document excerpts or data points used in your analysis
+            - Include relevant page numbers, document titles, or section references when available
+            - Format: "Source: [specific excerpt or data point from the provided risk assessment documentation]"
+            - If no specific sources are available, state: "Source: General industry knowledge and safety standards"
             """
         ),
         input=query,
