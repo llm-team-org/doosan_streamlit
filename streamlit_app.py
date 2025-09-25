@@ -269,14 +269,14 @@ def accident_output(accident_docs,query):
             - **Medium Confidence:** Moderate data (5-19 incidents), some uncertainty, older data
             - **Low Confidence:** Limited data (<5 incidents), high uncertainty, extrapolated estimates
             
-            Always ensure technical accuracy, evidence-based analysis, and actionable prevention recommendations while maintaining strict adherence to the language policy.
-            
             ## CITATION REQUIREMENTS
             - At the end of your response, provide a "SOURCES" section
             - List specific document excerpts or data points used in your analysis
             - Include relevant page numbers, document titles, or section references when available
             - Format: "Source: [specific excerpt or data point from the provided accident documentation]"
             - If no specific sources are available, state: "Source: General industry knowledge and safety standards"
+            
+            Always ensure technical accuracy, evidence-based analysis, and actionable prevention recommendations while maintaining strict adherence to the language policy. Always include the cited sources in the answer.
             """
         ),
         input=query,
@@ -459,7 +459,8 @@ Available Risk Assessment Documentation:
     "Improved Frequency": "[1-5 numerical score after controls in LANG or N/A]",
     "Improved Severity": "[1-4 numerical score after controls in LANG or N/A]",
     "Improved Risk": "[Risk score after controls (1-20) in LANG or N/A]",
-    "Residual Risk After Controls": "[New Frequency x New Severity = New Risk Score calculation in LANG or N/A]"
+    "Residual Risk After Controls": "[New Frequency x New Severity = New Risk Score calculation in LANG or N/A]",
+    "Sources": "[specific excerpt or data point from the provided risk assessment documentation or N/A]"
   }}
 ]
 
@@ -488,6 +489,13 @@ When risk assessment documentation is insufficient:
 - Maintain JSON structure integrity regardless of data availability
 
 Critical: Return ONLY the JSON array. No additional text, explanations, or formatting outside the JSON structure.
+
+## CITATION REQUIREMENTS
+- Include a "Sources" field in each JSON object to document data sources
+- Format: "Sources": "[specific excerpt or data point from the provided risk assessment documentation]"
+- If no specific sources are available, use: "Sources": "General industry knowledge and safety standards"
+
+Always ensure technical accuracy, regulatory awareness, and actionable risk management recommendations while maintaining strict adherence to the language policy. Always include the cited sources in the answer.
 """
     # Create structured prompt for JSON output
 #     json_instructions = f"""
@@ -560,7 +568,8 @@ Critical: Return ONLY the JSON array. No additional text, explanations, or forma
             "Improved Frequency": "N/A",
             "Improved Severity": "N/A",
             "Improved Risk": "N/A",
-            "Residual Risk After Controls": "N/A"
+            "Residual Risk After Controls": "N/A",
+            "Sources": "N/A"
         }]
 
 def risk_assessment_output(risk_assessment_docs, query):
@@ -717,14 +726,14 @@ def risk_assessment_output(risk_assessment_docs, query):
             - Recommend specific data collection for comprehensive assessment
             - Use conservative estimates with appropriate confidence indicators
             
-            Always ensure technical accuracy, regulatory awareness, and actionable risk management recommendations while maintaining strict adherence to the language policy.
-            
             ## CITATION REQUIREMENTS
             - At the end of your response, provide a "SOURCES" section
             - List specific document excerpts or data points used in your analysis
             - Include relevant page numbers, document titles, or section references when available
             - Format: "Source: [specific excerpt or data point from the provided risk assessment documentation]"
             - If no specific sources are available, state: "Source: General industry knowledge and safety standards"
+            
+            Always ensure technical accuracy, regulatory awareness, and actionable risk management recommendations while maintaining strict adherence to the language policy. Always include the cited sources in the answer.
             """
         ),
         input=query,
@@ -1131,7 +1140,7 @@ def regulations_output(regulations_docs,query):
         - Recommend specific regulatory research for definitive guidance
         - Indicate lower confidence levels where appropriate
         
-        Always ensure technical accuracy and actionable recommendations while maintaining strict adherence to the language policy.
+        Always ensure technical accuracy and actionable recommendations while maintaining strict adherence to the language policy. Always include the cited sources in the answer.
         
         ## CITATION REQUIREMENTS
         - At the end of your response, provide a "SOURCES" section
@@ -1246,7 +1255,7 @@ def dynamic_risk_assessment_output(risk_assessment_docs, query):
             - Indicate lower confidence levels appropriately
             - Recommend specific data collection for future assessments
             
-            Always ensure technical accuracy, conciseness, and actionable recommendations while maintaining strict adherence to the language policy.
+            Always ensure technical accuracy, conciseness, and actionable recommendations while maintaining strict adherence to the language policy. Always include the cited sources in the answer.
             
             ## CITATION REQUIREMENTS
             - At the end of your response, provide a "SOURCES" section
@@ -1372,7 +1381,7 @@ if user_query := st.chat_input("Ask a question about chemical usage, accidents, 
                                     json_data = [json_data]
                                 df = pd.DataFrame(json_data)
                                 st.subheader("📊 Risk Assessment Analysis")
-                                st.dataframe(df, width=None, hide_index=True)
+                                st.dataframe(df, width='stretch', hide_index=True)
                                 output = f"Retrieved {len(json_data)} risk assessment records"
                             else:
                                 st.error("No valid risk assessment data to display")
