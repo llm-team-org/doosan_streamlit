@@ -936,7 +936,7 @@ def get_regulations_data(query: str) -> str:
     # print("docs",docs)
     qdrant = QdrantVectorStore.from_existing_collection(
     embedding=embeddings,
-    collection_name="rules-and-regulations-new",
+    collection_name="doosan-rules-increased",
     url=os.getenv("QDRANT_URL"),
     api_key=os.getenv("QDRANT_API_KEY"),
     port=None,
