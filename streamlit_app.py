@@ -1337,7 +1337,7 @@ if user_query := st.chat_input("Ask a question about chemical usage, accidents, 
             if st.session_state.conversation_history:
                 # Get the last 2 conversations for context
                 recent_history = st.session_state.conversation_history[-2:] if len(st.session_state.conversation_history) >= 3 else st.session_state.conversation_history
-                history_context = "\n".join([f"Previous: User: {h['User']} | AI: {h['AI'][:200]}..." for h in recent_history])
+                history_context = "\n".join([f"Previous: User: {h['User']} | AI: {h['AI']}" for h in recent_history])
                 context_query = f"Previous conversation context:\n{history_context}\n\nCurrent query: {user_query}"
             
             messages = [HumanMessage(context_query)]
