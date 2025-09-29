@@ -26,7 +26,13 @@ An AI-powered safety assistant for accident analysis, risk assessments, chemical
 
 ## Requirements
 Python 3.10+
-
+langchain>=0.3.27
+langchain-openai>=0.3.32
+langchain-qdrant>=0.2.0
+python-dotenv>=1.1.1
+qdrant-client[fastembed]>=1.15.1
+streamlit>=1.49.1
+tabulate==0.9.0
 Recommended to use a virtual environment.
 
 ### Environment Variables
