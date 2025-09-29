@@ -92,7 +92,37 @@ def get_accident_records(query: str) -> str:
     compression_retriever = ContextualCompressionRetriever(
         base_compressor=compressor,
         base_retriever=retriever)
-    docs=compression_retriever.invoke(query)
+    compressed_docs=compression_retriever.invoke(query)
+
+    #print(f"After compression: {len(compressed_docs)} documents")
+    
+    # 3. THEN APPLY COHERE RERANKING ON COMPRESSED DOCS
+    final_docs = compressed_docs  # Default fallback
+    try:
+        if compressed_docs and len(compressed_docs) > 1:
+        # Extract compressed content for reranking
+            docs_text = [doc.page_content for doc in compressed_docs]
+            co = cohere.ClientV2(api_key=os.getenv("COHERE_API_KEY"))
+            rerank_response = co.rerank(
+                model="rerank-v3.5",
+                query=query,
+                documents=docs_text,
+                top_n=min(8, len(compressed_docs))  # Rerank all compressed docs
+                )
+                # Get final reranked documents
+        final_docs = []
+        for result in rerank_response.results:
+            original_doc = compressed_docs[result.index]
+            original_doc.metadata['cohere_score'] = result.relevance_score
+            original_doc.metadata['final_rank'] = len(final_docs) + 1
+            final_docs.append(original_doc)
+                
+        #print(f"Final reranked documents: {len(final_docs)}")
+    except Exception as e:
+            print(f"Cohere reranking failed: {e}")
+            final_docs = compressed_docs[:8]  # Fallback to top compressed docs
+    
+    return final_docs
     # print("retrieved_docs",retrieved_docs)
 
     #     # Apply Cohere reranking
@@ -119,7 +149,7 @@ def get_accident_records(query: str) -> str:
 
     # docs = [doc.payload['text'] for doc in retrieved_docs.points]
     # print("docs",docs)
-    return (docs)
+    #return (final_docs)
 
 
 def accident_output(accident_docs,query):
@@ -307,12 +337,44 @@ def get_chemical_usage(query: str) -> str:
     port=None,
     timeout=120
     )
+
+
     retriever = qdrant.as_retriever(search_kwargs={"k": 30})
     retrieved_docs = retriever.invoke(query)
     compression_retriever = ContextualCompressionRetriever(
         base_compressor=compressor,
         base_retriever=retriever)
-    docs=compression_retriever.invoke(query)
+    compressed_docs=compression_retriever.invoke(query)
+
+    #print(f"After compression: {len(compressed_docs)} documents")
+    
+    # 3. THEN APPLY COHERE RERANKING ON COMPRESSED DOCS
+    final_docs = compressed_docs  # Default fallback
+    try:
+        if compressed_docs and len(compressed_docs) > 1:
+        # Extract compressed content for reranking
+            docs_text = [doc.page_content for doc in compressed_docs]
+            co = cohere.ClientV2(api_key=os.getenv("COHERE_API_KEY"))
+            rerank_response = co.rerank(
+                model="rerank-v3.5",
+                query=query,
+                documents=docs_text,
+                top_n=min(8, len(compressed_docs))  # Rerank all compressed docs
+                )
+                # Get final reranked documents
+        final_docs = []
+        for result in rerank_response.results:
+            original_doc = compressed_docs[result.index]
+            original_doc.metadata['cohere_score'] = result.relevance_score
+            original_doc.metadata['final_rank'] = len(final_docs) + 1
+            final_docs.append(original_doc)
+                
+        #print(f"Final reranked documents: {len(final_docs)}")
+    except Exception as e:
+            print(f"Cohere reranking failed: {e}")
+            final_docs = compressed_docs[:8]  # Fallback to top compressed docs
+    
+    return final_docs
     # print("retrieved_docs",retrieved_docs)
 
         # Apply Cohere reranking
@@ -339,7 +401,7 @@ def get_chemical_usage(query: str) -> str:
 
     # docs = [doc.payload['text'] for doc in retrieved_docs.points]
     # print("docs",docs)
-    return (docs)
+    #return (docs)
     # return retrieved_docs
 
 
@@ -372,7 +434,36 @@ def get_risk_assessment(query: str) -> str:
     compression_retriever = ContextualCompressionRetriever(
         base_compressor=compressor,
         base_retriever=retriever)
-    docs=compression_retriever.invoke(query)
+    #docs=compression_retriever.invoke(query)
+    compressed_docs=compression_retriever.invoke(query)
+
+    # 3. THEN APPLY COHERE RERANKING ON COMPRESSED DOCS
+    final_docs = compressed_docs  # Default fallback
+    try:
+        if compressed_docs and len(compressed_docs) > 1:
+        # Extract compressed content for reranking
+            docs_text = [doc.page_content for doc in compressed_docs]
+            co = cohere.ClientV2(api_key=os.getenv("COHERE_API_KEY"))
+            rerank_response = co.rerank(
+                model="rerank-v3.5",
+                query=query,
+                documents=docs_text,
+                top_n=min(8, len(compressed_docs))  # Rerank all compressed docs
+                )
+                # Get final reranked documents
+        final_docs = []
+        for result in rerank_response.results:
+            original_doc = compressed_docs[result.index]
+            original_doc.metadata['cohere_score'] = result.relevance_score
+            original_doc.metadata['final_rank'] = len(final_docs) + 1
+            final_docs.append(original_doc)
+                
+        #print(f"Final reranked documents: {len(final_docs)}")
+    except Exception as e:
+            print(f"Cohere reranking failed: {e}")
+            final_docs = compressed_docs[:8]  # Fallback to top compressed docs
+    
+    return final_docs
     # retriever = qdrant.as_retriever(search_kwargs={"k": 30})
     # retrieved_docs = retriever.invoke(query)
     # # print("retrieved_docs",retrieved_docs)
@@ -398,7 +489,7 @@ def get_risk_assessment(query: str) -> str:
         
     # return reranked_docs
     # docs = [doc.payload['text'] for doc in retrieved_docs.points]
-    return (docs)
+    #return (docs)
 
 def risk_assessment_table_output(risk_assessment_docs, query):
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -943,13 +1034,43 @@ def get_regulations_data(query: str) -> str:
     timeout=120
     )
     retriever = qdrant.as_retriever(search_kwargs={"k": 30})
-    retrieved_docs = retriever.invoke(query)
-    # print("retrieved_docs",retrieved_docs)
-
+    #retrieved_docs = retriever.invoke(query)
     compression_retriever = ContextualCompressionRetriever(
         base_compressor=compressor,
         base_retriever=retriever)
-    docs=compression_retriever.invoke(query)
+    compressed_docs=compression_retriever.invoke(query)
+    # print("retrieved_docs",retrieved_docs)    
+    # retriever = qdrant.as_retriever(search_kwargs={"k": 30})
+
+    #print(f"After compression: {len(compressed_docs)} documents")
+    
+    # 3. THEN APPLY COHERE RERANKING ON COMPRESSED DOCS
+    final_docs = compressed_docs  # Default fallback
+    try:
+        if compressed_docs and len(compressed_docs) > 1:
+        # Extract compressed content for reranking
+            docs_text = [doc.page_content for doc in compressed_docs]
+            co = cohere.ClientV2(api_key=os.getenv("COHERE_API_KEY"))
+            rerank_response = co.rerank(
+                model="rerank-v3.5",
+                query=query,
+                documents=docs_text,
+                top_n=min(8, len(compressed_docs))  # Rerank all compressed docs
+                )
+                # Get final reranked documents
+        final_docs = []
+        for result in rerank_response.results:
+            original_doc = compressed_docs[result.index]
+            original_doc.metadata['cohere_score'] = result.relevance_score
+            original_doc.metadata['final_rank'] = len(final_docs) + 1
+            final_docs.append(original_doc)
+                
+        #print(f"Final reranked documents: {len(final_docs)}")
+    except Exception as e:
+            print(f"Cohere reranking failed: {e}")
+            final_docs = compressed_docs[:8]  # Fallback to top compressed docs
+    
+    return final_docs
     # # Apply Cohere reranking
     # if retrieved_docs:
     #     # Convert retrieved docs to format expected by Cohere
@@ -972,7 +1093,7 @@ def get_regulations_data(query: str) -> str:
         
     # return reranked_docs
     
-    return (docs)
+    #return (docs)
 
 @tool
 def dynamic_risk_assessment(query: str) -> str:
@@ -999,11 +1120,41 @@ def dynamic_risk_assessment(query: str) -> str:
     timeout=120
     )
     retriever = qdrant.as_retriever(search_kwargs={"k": 30})
-    retrieved_docs = retriever.invoke(query)
+    #retrieved_docs = retriever.invoke(query)
     compression_retriever = ContextualCompressionRetriever(
         base_compressor=compressor,
         base_retriever=retriever)
-    docs=compression_retriever.invoke(query)
+    compressed_docs=compression_retriever.invoke(query)
+
+    #print(f"After compression: {len(compressed_docs)} documents")
+    
+    # 3. THEN APPLY COHERE RERANKING ON COMPRESSED DOCS
+    final_docs = compressed_docs  # Default fallback
+    try:
+        if compressed_docs and len(compressed_docs) > 1:
+        # Extract compressed content for reranking
+            docs_text = [doc.page_content for doc in compressed_docs]
+            co = cohere.ClientV2(api_key=os.getenv("COHERE_API_KEY"))
+            rerank_response = co.rerank(
+                model="rerank-v3.5",
+                query=query,
+                documents=docs_text,
+                top_n=min(8, len(compressed_docs))  # Rerank all compressed docs
+                )
+                # Get final reranked documents
+        final_docs = []
+        for result in rerank_response.results:
+            original_doc = compressed_docs[result.index]
+            original_doc.metadata['cohere_score'] = result.relevance_score
+            original_doc.metadata['final_rank'] = len(final_docs) + 1
+            final_docs.append(original_doc)
+                
+        #print(f"Final reranked documents: {len(final_docs)}")
+    except Exception as e:
+            print(f"Cohere reranking failed: {e}")
+            final_docs = compressed_docs[:8]  # Fallback to top compressed docs
+    
+    return final_docs
     # print("retrieved_docs",retrieved_docs)
 
         # Apply Cohere reranking
@@ -1027,7 +1178,7 @@ def dynamic_risk_assessment(query: str) -> str:
     #     print("reranked_docs",reranked_docs)
         
     # return reranked_docs
-    return (docs)
+    #return (docs)
     
 def regulations_output(regulations_docs,query):
 
