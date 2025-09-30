@@ -1,9 +1,11 @@
 import os
 import uvicorn
+import aiohttp
+import psutil
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from dotenv import load_dotenv
+from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 import cohere
 
@@ -34,7 +36,25 @@ from streamlit_app import (
 # Import additional required modules
 from langchain_core.messages import HumanMessage, ToolMessage
 
+# Import Pydantic models and patch function
+from pydantic_models import (
+    QueryRequest,
+    QueryResponse,
+    RiskAssessmentTableResponse,
+    ToolResponse,
+    PatchRequest,
+    PatchResponse,
+    ResponseStatus,
+    PatchResponsePosco,
+    patch_response_posco,
+)
+from patch_url_function import patch_url_function_progress
+
 load_dotenv()
+
+# Configuration for patch URL and tracking
+PATCH_URL = os.getenv("PATCH_URL", "https://api.example.com/status")
+DEFAULT_TRACKING_ID = os.getenv("TRACKING_ID", "default-tracking-id")
 
 # Global chat history storage (in production, use a database)
 chat_history = []
@@ -47,26 +67,7 @@ app = FastAPI(
 )
 
 
-# Pydantic models
-class QueryRequest(BaseModel):
-    query: str
-
-class QueryResponse(BaseModel):
-    result: str
-    tool_used: str
-    success: bool
-    chat_history: List[Dict[str, str]]
-
-class RiskAssessmentTableResponse(BaseModel):
-    data: List[Dict[str, Any]]
-    success: bool
-    message: str
-
-class ToolResponse(BaseModel):
-    data: Any
-    success: bool
-    message: str
-    tool_name: str
+# Pydantic models are now imported from pydantic_models.py
 
 # API Endpoints
 @app.get("/")
@@ -79,9 +80,17 @@ async def get_accident_records_endpoint(request: QueryRequest):
     """
     Individual endpoint for getting accident records
     """
+    tracking_id = request.tracking_id or DEFAULT_TRACKING_ID
+    patch_url = request.patch_url or PATCH_URL
+    
     try:
         accident_docs = get_accident_records(request.query)
         output = accident_output(accident_docs=accident_docs, query=request.query)
+        
+        response = patch_response_posco(
+            id=tracking_id, response=output, status=ResponseStatus.SUCCESS
+        )
+        await patch_url_function_progress(patch_url, response)
         
         return ToolResponse(
             data=output,
@@ -90,6 +99,11 @@ async def get_accident_records_endpoint(request: QueryRequest):
             tool_name="get_accident_records"
         )
     except Exception as e:
+        response = patch_response_posco(
+            id=tracking_id, response=e, status=ResponseStatus.EXCEPTION
+        )
+        await patch_url_function_progress(patch_url, response)
+        print(f"Error retrieving accident records: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error retrieving accident records: {str(e)}")
 
 @app.post("/tools/chemical-usage", response_model=ToolResponse)
@@ -97,9 +111,18 @@ async def get_chemical_usage_endpoint(request: QueryRequest):
     """
     Individual endpoint for getting chemical usage data
     """
+    tracking_id = request.tracking_id or DEFAULT_TRACKING_ID
+    patch_url = request.patch_url or PATCH_URL
+    
     try:
         chemical_data = get_chemical_usage(request.query)
         # Note: You may need to add a chemical_usage_output function similar to other output functions
+        
+        response = patch_response_posco(
+            id=tracking_id, response=chemical_data, status=ResponseStatus.SUCCESS
+        )
+        await patch_url_function_progress(patch_url, response)
+        
         return ToolResponse(
             data=chemical_data,
             success=True,
@@ -107,6 +130,11 @@ async def get_chemical_usage_endpoint(request: QueryRequest):
             tool_name="get_chemical_usage"
         )
     except Exception as e:
+        response = patch_response_posco(
+            id=tracking_id, response=e, status=ResponseStatus.EXCEPTION
+        )
+        await patch_url_function_progress(patch_url, response)
+        print(f"Error retrieving chemical usage: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error retrieving chemical usage: {str(e)}")
 
 @app.post("/tools/risk-assessment", response_model=ToolResponse)
@@ -114,9 +142,17 @@ async def get_risk_assessment_endpoint(request: QueryRequest):
     """
     Individual endpoint for getting risk assessment data
     """
+    tracking_id = request.tracking_id or DEFAULT_TRACKING_ID
+    patch_url = request.patch_url or PATCH_URL
+    
     try:
         risk_assessment_docs = get_risk_assessment(request.query)
         output = risk_assessment_output(risk_assessment_docs=risk_assessment_docs, query=request.query)
+        
+        response = patch_response_posco(
+            id=tracking_id, response=output, status=ResponseStatus.SUCCESS
+        )
+        await patch_url_function_progress(patch_url, response)
         
         return ToolResponse(
             data=output,
@@ -125,6 +161,11 @@ async def get_risk_assessment_endpoint(request: QueryRequest):
             tool_name="get_risk_assessment"
         )
     except Exception as e:
+        response = patch_response_posco(
+            id=tracking_id, response=e, status=ResponseStatus.EXCEPTION
+        )
+        await patch_url_function_progress(patch_url, response)
+        print(f"Error retrieving risk assessment: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error retrieving risk assessment: {str(e)}")
 
 @app.post("/tools/regulations", response_model=ToolResponse)
@@ -132,9 +173,17 @@ async def get_regulations_data_endpoint(request: QueryRequest):
     """
     Individual endpoint for getting regulations data
     """
+    tracking_id = request.tracking_id or DEFAULT_TRACKING_ID
+    patch_url = request.patch_url or PATCH_URL
+    
     try:
         regulations_docs = get_regulations_data(request.query)
         output = regulations_output(regulations_docs=regulations_docs, query=request.query)
+        
+        response = patch_response_posco(
+            id=tracking_id, response=output, status=ResponseStatus.SUCCESS
+        )
+        await patch_url_function_progress(patch_url, response)
         
         return ToolResponse(
             data=output,
@@ -143,6 +192,11 @@ async def get_regulations_data_endpoint(request: QueryRequest):
             tool_name="get_regulations_data"
         )
     except Exception as e:
+        response = patch_response_posco(
+            id=tracking_id, response=e, status=ResponseStatus.EXCEPTION
+        )
+        await patch_url_function_progress(patch_url, response)
+        print(f"Error retrieving regulations data: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error retrieving regulations data: {str(e)}")
 
 @app.post("/tools/chemical-details", response_model=ToolResponse)
@@ -150,9 +204,17 @@ async def get_chemical_details_endpoint(request: QueryRequest):
     """
     Individual endpoint for getting chemical details
     """
+    tracking_id = request.tracking_id or DEFAULT_TRACKING_ID
+    patch_url = request.patch_url or PATCH_URL
+    
     try:
         table_data = get_chemical_details(request.query)
         output = chemical_output(table_data=table_data, query=request.query)
+        
+        response = patch_response_posco(
+            id=tracking_id, response=output, status=ResponseStatus.SUCCESS
+        )
+        await patch_url_function_progress(patch_url, response)
         
         return ToolResponse(
             data=output,
@@ -161,6 +223,11 @@ async def get_chemical_details_endpoint(request: QueryRequest):
             tool_name="get_chemical_details"
         )
     except Exception as e:
+        response = patch_response_posco(
+            id=tracking_id, response=e, status=ResponseStatus.EXCEPTION
+        )
+        await patch_url_function_progress(patch_url, response)
+        print(f"Error retrieving chemical details: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error retrieving chemical details: {str(e)}")
 
 @app.post("/tools/dynamic-risk-assessment", response_model=ToolResponse)
@@ -168,9 +235,17 @@ async def dynamic_risk_assessment_endpoint(request: QueryRequest):
     """
     Individual endpoint for dynamic risk assessment
     """
+    tracking_id = request.tracking_id or DEFAULT_TRACKING_ID
+    patch_url = request.patch_url or PATCH_URL
+    
     try:
         risk_assessment_docs = dynamic_risk_assessment(request.query)
         output = dynamic_risk_assessment_output(risk_assessment_docs=risk_assessment_docs, query=request.query)
+        
+        response = patch_response_posco(
+            id=tracking_id, response=output, status=ResponseStatus.SUCCESS
+        )
+        await patch_url_function_progress(patch_url, response)
         
         return ToolResponse(
             data=output,
@@ -179,6 +254,11 @@ async def dynamic_risk_assessment_endpoint(request: QueryRequest):
             tool_name="dynamic_risk_assessment"
         )
     except Exception as e:
+        response = patch_response_posco(
+            id=tracking_id, response=e, status=ResponseStatus.EXCEPTION
+        )
+        await patch_url_function_progress(patch_url, response)
+        print(f"Error performing dynamic risk assessment: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error performing dynamic risk assessment: {str(e)}")
 
 @app.get("/health")
@@ -190,6 +270,9 @@ async def query_endpoint(request: QueryRequest):
     """
     Main query endpoint that processes user queries and returns AI responses
     """
+    tracking_id = request.tracking_id or DEFAULT_TRACKING_ID
+    patch_url = request.patch_url or PATCH_URL
+    
     try:
         # Initialize chat history if None
         global chat_history
@@ -255,6 +338,11 @@ async def query_endpoint(request: QueryRequest):
         history = {"User": request.query, "AI": answer}
         chat_history.append(history)
         
+        response = patch_response_posco(
+            id=tracking_id, response=answer, status=ResponseStatus.SUCCESS
+        )
+        await patch_url_function_progress(patch_url, response)
+        
         return QueryResponse(
             result=answer,
             tool_used=tool_used,
@@ -263,6 +351,11 @@ async def query_endpoint(request: QueryRequest):
         )
         
     except Exception as e:
+        response = patch_response_posco(
+            id=tracking_id, response=e, status=ResponseStatus.EXCEPTION
+        )
+        await patch_url_function_progress(patch_url, response)
+        print(f"Error processing query: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error processing query: {str(e)}")
 
 @app.post("/risk-assessment-table", response_model=RiskAssessmentTableResponse)
@@ -270,6 +363,9 @@ async def risk_assessment_table_endpoint(request: QueryRequest):
     """
     Endpoint specifically for risk assessment table data
     """
+    tracking_id = request.tracking_id or DEFAULT_TRACKING_ID
+    patch_url = request.patch_url or PATCH_URL
+    
     try:
         risk_assessment_docs = get_risk_assessment(request.query)
         json_data = risk_assessment_table_output(risk_assessment_docs=risk_assessment_docs, query=request.query)
@@ -281,12 +377,22 @@ async def risk_assessment_table_endpoint(request: QueryRequest):
             elif not isinstance(json_data, list):
                 json_data = [json_data]
             
+            response = patch_response_posco(
+                id=tracking_id, response=json_data, status=ResponseStatus.SUCCESS
+            )
+            await patch_url_function_progress(patch_url, response)
+            
             return RiskAssessmentTableResponse(
                 data=json_data,
                 success=True,
                 message=f"Retrieved {len(json_data)} risk assessment records"
             )
         else:
+            response = patch_response_posco(
+                id=tracking_id, response="No data found", status=ResponseStatus.FAILED
+            )
+            await patch_url_function_progress(patch_url, response)
+            
             return RiskAssessmentTableResponse(
                 data=[],
                 success=False,
@@ -294,35 +400,68 @@ async def risk_assessment_table_endpoint(request: QueryRequest):
             )
             
     except Exception as e:
+        response = patch_response_posco(
+            id=tracking_id, response=e, status=ResponseStatus.EXCEPTION
+        )
+        await patch_url_function_progress(patch_url, response)
+        print(f"Error processing risk assessment table: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error processing risk assessment table: {str(e)}")
 
 @app.get("/chat-history")
-async def get_chat_history():
+async def get_chat_history(tracking_id: Optional[str] = None, patch_url: Optional[str] = None):
     """
     Get the current chat history
     """
+    tracking_id = tracking_id or DEFAULT_TRACKING_ID
+    patch_url = patch_url or PATCH_URL
+    
     try:
         global chat_history
         if chat_history is None:
             chat_history = []
+        
+        response = patch_response_posco(
+            id=tracking_id, response=chat_history, status=ResponseStatus.SUCCESS
+        )
+        await patch_url_function_progress(patch_url, response)
+        
         return {
             "chat_history": chat_history,
             "success": True,
             "message": f"Retrieved {len(chat_history)} chat messages"
         }
     except Exception as e:
+        response = patch_response_posco(
+            id=tracking_id, response=e, status=ResponseStatus.EXCEPTION
+        )
+        await patch_url_function_progress(patch_url, response)
+        print(f"Error retrieving chat history: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error retrieving chat history: {str(e)}")
 
 @app.delete("/chat-history")
-async def clear_chat_history():
+async def clear_chat_history(tracking_id: Optional[str] = None, patch_url: Optional[str] = None):
     """
     Clear the chat history
     """
+    tracking_id = tracking_id or DEFAULT_TRACKING_ID
+    patch_url = patch_url or PATCH_URL
+    
     try:
         global chat_history
         chat_history = []
+        
+        response = patch_response_posco(
+            id=tracking_id, response="Chat history cleared", status=ResponseStatus.SUCCESS
+        )
+        await patch_url_function_progress(patch_url, response)
+        
         return {"message": "Chat history cleared successfully", "success": True}
     except Exception as e:
+        response = patch_response_posco(
+            id=tracking_id, response=e, status=ResponseStatus.EXCEPTION
+        )
+        await patch_url_function_progress(patch_url, response)
+        print(f"Error clearing chat history: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error clearing chat history: {str(e)}")
 
 if __name__ == "__main__":
