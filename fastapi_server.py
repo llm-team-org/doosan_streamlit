@@ -317,9 +317,9 @@ async def query_endpoint(request: QueryRequest):
                 elif tool_name == "dynamic_risk_assessment":
                     risk_assessment_docs = dynamic_risk_assessment(request.query)
                     output = dynamic_risk_assessment_output(risk_assessment_docs=risk_assessment_docs, query=request.query)
-                elif tool_name == "get_chemical_details":
-                    table_data = get_chemical_details(request.query)
-                    output = chemical_output(table_data=table_data, query=request.query)
+                elif tool_name == "get_chemical_usage":
+                    chemical_usage_docs = get_chemical_usage(request.query)
+                    output = chemical_output(table_data=chemical_usage_docs, query=request.query)
                 else:
                     output = f"Unknown tool: {tool_name}"
                 
