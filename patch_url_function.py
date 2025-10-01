@@ -1,43 +1,34 @@
+# pylint: disable=all
+# fmt: off
+# flake8: noqa
+import aiohttp,os
 from datetime import datetime
-import aiohttp
+import logging
+from dotenv import load_dotenv
+load_dotenv()
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s %(message)s"
+)
+logger = logging.getLogger(__name__)
+BACKEND_URL = os.getenv("BACKEND_URL")
 
 async def patch_url_function_progress(url, response_data, uuid=None):
-    """
-    Async function to send PATCH requests to a URL with response data
-    
-    Args:
-        url (str): The URL to send the PATCH request to
-        response_data: Pydantic model or dict with data to send
-        uuid (str, optional): UUID for tracking/logging purposes
-    
-    Returns:
-        dict: Response data from the PATCH request
-    
-    Raises:
-        Exception: If the PATCH request fails
-    """
     try:
-        print(
-            f"\n{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} URL: {url}\nUUID: {uuid}\nRESPONSE: {response_data.model_dump_json(indent=3) if hasattr(response_data, 'model_dump_json') else str(response_data)}\n"
-        )
-
+        logger.info(url)
+        # if hasattr(response_data, 'deepsearch_status'):
+        #     logger.info(f"\n{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} URL: {url}\nUUID: {uuid}\nDEEPSEARCH ID/TOKEN/STATUS: {response_data.id}/{response_data.token}/{response_data.deepsearch_status}\nREPORT: {response_data.report}\n")
+        # else:
+        #     logger.info(f"\n{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} URL: {url}\nRESPONSE: {response_data.model_dump_json(indent=3)}\n")
         async with aiohttp.ClientSession() as session:
-            async with session.patch(url, json=response_data.model_dump() if hasattr(response_data, 'model_dump') else response_data) as response:
+            async with session.patch(url, json=response_data.model_dump(exclude_none=True)) as response:
                 if response.status != 200:
-                    print(f"Failed with status code: {response.status}")
-                    response_text = await response.text()
-                    print(response_text)
+                    logger.info(f"Failed with status code: {response.status}")
+                    logger.info(await response.text())  # Print error message
                     raise Exception(f"Patch request failed with status code: {response.status}")
-                
-                # Return the response data
-                try:
-                    return await response.json()
-                except:
-                    return {"status": "success", "message": "PATCH request completed successfully"}
-                    
+        # #     print(response_data)
+        logger.info(response_data.model_dump_json(indent=3))
     except Exception as e:
-        print(
-            f"An error occurred while patching the URL: URL: {url}\nRESPONSE: {response_data.model_dump_json(indent=3) if hasattr(response_data, 'model_dump_json') else str(response_data)}\nERROR: {str(e)}"
-        )
+        logger.info(f"An error occurred while patching the URL: URL :{url}\nRESPONSE: {response_data.model_dump_json(indent=3)}\nERROR: {str(e)}")
         raise Exception("patch_url_function_progress --> " + str(e))

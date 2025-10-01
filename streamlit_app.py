@@ -33,9 +33,6 @@ llm = ChatOpenAI(model="gpt-4.1", temperature=0,api_key=os.getenv("OPENAI_API_KE
 embeddings = OpenAIEmbeddings(openai_api_key=os.getenv("OPENAI_API_KEY"), model="text-embedding-3-large")
 
 
-if "client" not in st.session_state:
-    st.session_state.client = qdrant_client.QdrantClient(url=os.getenv("QDRANT_URL"),api_key=os.getenv("QDRANT_API_KEY"),port=None)
-
 def xml_to_table(xml_data):
     """
     Parses XML data and returns a list of dictionaries, where each
@@ -1424,142 +1421,147 @@ tool_dict = {"get_accident_records":get_accident_records,"get_chemical_usage":ge
 tools = [get_accident_records,get_chemical_usage,get_risk_assessment,get_regulations_data,get_chemical_details,dynamic_risk_assessment]
 llm_with_tools = llm.bind_tools(tools=tools)
 
-st.title("DOOSAN RISK MANAGEMENT AI Chatbot 📄")
-
-if "chat_history" not in st.session_state:
-    st.session_state.chat_history = []
-
-# Simple chat history for conversation context
-if "conversation_history" not in st.session_state:
-    st.session_state.conversation_history = []
-
-# Sidebar for chat history
-with st.sidebar:
-    st.header("💬 Chat History")
+def main():
+    st.title("DOOSAN RISK MANAGEMENT AI Chatbot 📄")
     
-    # Show recent conversations
-    if st.session_state.conversation_history:
-        st.subheader("Recent Conversations")
-        for i, conv in enumerate(st.session_state.conversation_history[-5:]):  # Show last 5
-            with st.expander(f"Chat {len(st.session_state.conversation_history) - 4 + i}", expanded=False):
-                st.write(f"**User:** {conv['User']}")
-                st.write(f"**AI:** {conv['AI'][:100]}...")  # Truncated for sidebar
-    
-    # Clear chat history button
-    if st.button("🗑️ Clear Chat History", type="secondary"):
-        st.session_state.conversation_history = []
+    if "chat_history" not in st.session_state:
         st.session_state.chat_history = []
-        st.rerun()
     
-    # Show total conversations
-    st.metric("Total Conversations", len(st.session_state.conversation_history))
-
-# Main chat area with background conversation history
-col1, col2 = st.columns([3, 1])
-
-with col1:
-    # Display current conversation in background
-    if st.session_state.conversation_history:
-        with st.expander("📚 Previous Conversations (Background Context)", expanded=False):
-            for i, conv in enumerate(st.session_state.conversation_history):
-                st.write(f"**Conversation {i+1}:**")
-                st.write(f"👤 **User:** {conv['User']}")
-                st.write(f"🤖 **AI:** {conv['AI'][:300]}{'...' if len(conv['AI']) > 300 else ''}")
-                st.write("---")
-
-# for message in st.session_state.chat_history:
-#     if message:
-#         print("Here is messages tools--------",message)
-#         with st.expander(label=message.tool_call_id,icon='📖'):
-#             st.write(message.content)
-#         continue
-#     with st.chat_message(message.type):
-#         st.markdown(message.content)
-
-if user_query := st.chat_input("Ask a question about chemical usage, accidents, or risks."):
+    # Simple chat history for conversation context
+    if "conversation_history" not in st.session_state:
+        st.session_state.conversation_history = []
     
-    with st.chat_message("human"):
-        st.markdown(user_query)
-
-    with st.chat_message("ai"):
-        with st.spinner("Thinking..."):
-            # Build context with recent chat history
-            context_query = user_query
-            if st.session_state.conversation_history:
-                # Get the last 2 conversations for context
-                recent_history = st.session_state.conversation_history[-2:] if len(st.session_state.conversation_history) >= 3 else st.session_state.conversation_history
-                history_context = "\n".join([f"Previous: User: {h['User']} | AI: {h['AI']}" for h in recent_history])
-                context_query = f"Previous conversation context:\n{history_context}\n\nCurrent query: {user_query}"
-            
-            messages = [HumanMessage(context_query)]
-            ai_msg = llm_with_tools.invoke(messages)
-            print(ai_msg)
-            messages.append(ai_msg)
-            # Initialize output variable
-            output = "No response generated"
-            
-            # Use while loop for continuous tool calls
-            while ai_msg.tool_calls:
-                for tool_call in ai_msg.tool_calls:
-                    selected_tool = tool_dict[tool_call["name"].lower()]
-                    print("Here is the selected tool-------",selected_tool)
-                    tool_name= selected_tool.name
-                    print("Here is the selected tool name -------",tool_name)
-                    
-                    if tool_name == "get_chemical_details":
-                        table_data=get_chemical_details(user_query)
-                        output=chemical_output(table_data=table_data,query=context_query)
-                    elif tool_name == "get_chemical_usage":
-                        chemical_usage_docs=get_chemical_usage(user_query)
-                        output=chemical_output(table_data=chemical_usage_docs,query=context_query)
-                    elif tool_name == "get_regulations_data":
-                        regulations_docs=get_regulations_data(user_query)
-                        output=regulations_output(regulations_docs=regulations_docs,query=context_query)
-                    elif tool_name == "get_accident_records":
-                        accident_docs=get_accident_records(user_query)
-                        output=accident_output(accident_docs=accident_docs,query=context_query)
-                    elif tool_name == "get_risk_assessment":
-                        risk_assessment_docs=get_risk_assessment(user_query)
-                        if "table" in user_query.lower() or "테이블" in user_query.lower():
-                            output=risk_assessment_docs
-                            json_data=risk_assessment_table_output(risk_assessment_docs=risk_assessment_docs,query=context_query)
-                            if json_data:
-                                print("Here is the json data-------",json_data)
-                                # Ensure json_data is a list
-                                if isinstance(json_data, dict):
-                                    json_data = [json_data]
-                                elif not isinstance(json_data, list):
-                                    json_data = [json_data]
-                                df = pd.DataFrame(json_data)
-                                st.subheader("📊 Risk Assessment Analysis")
-                                st.dataframe(df, width='stretch', hide_index=True)
-                                output = f"Retrieved {len(json_data)} risk assessment records"
-                            else:
-                                st.error("No valid risk assessment data to display")
-                                output = "Error processing risk assessment data"
-                        else:
-                            output=risk_assessment_output(risk_assessment_docs=risk_assessment_docs,query=context_query)
-                    elif tool_name == "dynamic_risk_assessment":
-                        risk_assessment_docs=dynamic_risk_assessment(context_query)
-                        output=dynamic_risk_assessment_output(risk_assessment_docs=risk_assessment_docs,query=context_query)
-                    else:
-                        # Handle unknown tool
-                        output = f"Unknown tool: {tool_name}"
-                    
-                    # Add tool result to messages
-                    from langchain_core.messages import ToolMessage
-                    tool_message = ToolMessage(content=output, tool_call_id=tool_call["id"])
-                    messages.append(tool_message)
+    # Sidebar for chat history
+    with st.sidebar:
+        st.header("💬 Chat History")
+        
+        # Show recent conversations
+        if st.session_state.conversation_history:
+            st.subheader("Recent Conversations")
+            for i, conv in enumerate(st.session_state.conversation_history[-5:]):  # Show last 5
+                with st.expander(f"Chat {len(st.session_state.conversation_history) - 4 + i}", expanded=False):
+                    st.write(f"**User:** {conv['User']}")
+                    st.write(f"**AI:** {conv['AI'][:100]}...")  # Truncated for sidebar
+        
+        # Clear chat history button
+        if st.button("🗑️ Clear Chat History", type="secondary"):
+            st.session_state.conversation_history = []
+            st.session_state.chat_history = []
+            st.rerun()
+        
+        # Show total conversations
+        st.metric("Total Conversations", len(st.session_state.conversation_history))
+    
+    # Main chat area with background conversation history
+    col1, col2 = st.columns([3, 1])
+    
+    with col1:
+        # Display current conversation in background
+        if st.session_state.conversation_history:
+            with st.expander("📚 Previous Conversations (Background Context)", expanded=False):
+                for i, conv in enumerate(st.session_state.conversation_history):
+                    st.write(f"**Conversation {i+1}:**")
+                    st.write(f"👤 **User:** {conv['User']}")
+                    st.write(f"🤖 **AI:** {conv['AI'][:300]}{'...' if len(conv['AI']) > 300 else ''}")
+                    st.write("---")
+    
+    # for message in st.session_state.chat_history:
+    #     if message:
+    #         print("Here is messages tools--------",message)
+    #         with st.expander(label=message.tool_call_id,icon='📖'):
+    #             st.write(message.content)
+    #         continue
+    #     with st.chat_message(message.type):
+    #         st.markdown(message.content)
+    
+    if user_query := st.chat_input("Ask a question about chemical usage, accidents, or risks."):
+        
+        with st.chat_message("human"):
+            st.markdown(user_query)
+    
+        with st.chat_message("ai"):
+            with st.spinner("Thinking..."):
+                # Build context with recent chat history
+                context_query = user_query
+                if st.session_state.conversation_history:
+                    # Get the last 2 conversations for context
+                    recent_history = st.session_state.conversation_history[-2:] if len(st.session_state.conversation_history) >= 3 else st.session_state.conversation_history
+                    history_context = "\n".join([f"Previous: User: {h['User']} | AI: {h['AI']}" for h in recent_history])
+                    context_query = f"Previous conversation context:\n{history_context}\n\nCurrent query: {user_query}"
                 
-                # Get next AI response
+                messages = [HumanMessage(context_query)]
                 ai_msg = llm_with_tools.invoke(messages)
+                print(ai_msg)
                 messages.append(ai_msg)
+                # Initialize output variable
+                output = "No response generated"
+                
+                # Use while loop for continuous tool calls
+                while ai_msg.tool_calls:
+                    for tool_call in ai_msg.tool_calls:
+                        selected_tool = tool_dict[tool_call["name"].lower()]
+                        print("Here is the selected tool-------",selected_tool)
+                        tool_name= selected_tool.name
+                        print("Here is the selected tool name -------",tool_name)
+                        
+                        if tool_name == "get_chemical_details":
+                            table_data=get_chemical_details(user_query)
+                            output=chemical_output(table_data=table_data,query=context_query)
+                        elif tool_name == "get_chemical_usage":
+                            chemical_usage_docs=get_chemical_usage(user_query)
+                            output=chemical_output(table_data=chemical_usage_docs,query=context_query)
+                        elif tool_name == "get_regulations_data":
+                            regulations_docs=get_regulations_data(user_query)
+                            output=regulations_output(regulations_docs=regulations_docs,query=context_query)
+                        elif tool_name == "get_accident_records":
+                            accident_docs=get_accident_records(user_query)
+                            output=accident_output(accident_docs=accident_docs,query=context_query)
+                        elif tool_name == "get_risk_assessment":
+                            risk_assessment_docs=get_risk_assessment(user_query)
+                            if "table" in user_query.lower() or "테이블" in user_query.lower():
+                                output=risk_assessment_docs
+                                json_data=risk_assessment_table_output(risk_assessment_docs=risk_assessment_docs,query=context_query)
+                                if json_data:
+                                    print("Here is the json data-------",json_data)
+                                    # Ensure json_data is a list
+                                    if isinstance(json_data, dict):
+                                        json_data = [json_data]
+                                    elif not isinstance(json_data, list):
+                                        json_data = [json_data]
+                                    df = pd.DataFrame(json_data)
+                                    st.subheader("📊 Risk Assessment Analysis")
+                                    st.dataframe(df, width='stretch', hide_index=True)
+                                    output = f"Retrieved {len(json_data)} risk assessment records"
+                                else:
+                                    st.error("No valid risk assessment data to display")
+                                    output = "Error processing risk assessment data"
+                            else:
+                                output=risk_assessment_output(risk_assessment_docs=risk_assessment_docs,query=context_query)
+                        elif tool_name == "dynamic_risk_assessment":
+                            risk_assessment_docs=dynamic_risk_assessment(context_query)
+                            output=dynamic_risk_assessment_output(risk_assessment_docs=risk_assessment_docs,query=context_query)
+                        else:
+                            # Handle unknown tool
+                            output = f"Unknown tool: {tool_name}"
+                        
+                        # Add tool result to messages
+                        from langchain_core.messages import ToolMessage
+                        tool_message = ToolMessage(content=output, tool_call_id=tool_call["id"])
+                        messages.append(tool_message)
+                    
+                    # Get next AI response
+                    ai_msg = llm_with_tools.invoke(messages)
+                    messages.append(ai_msg)
+    
+                # Display final answer
+                answer = ai_msg.content if ai_msg.content else output
+                st.markdown(answer)
+                st.session_state.chat_history.extend(messages)
+                
+                # Add to conversation history
+                history = {"User": user_query, "AI": answer}
+                st.session_state.conversation_history.append(history)
 
-            # Display final answer
-            answer = ai_msg.content if ai_msg.content else output
-            st.markdown(answer)
-            st.session_state.chat_history.extend(messages)
-            
-            # Add to conversation history
-            history = {"User": user_query, "AI": answer}
-            st.session_state.conversation_history.append(history)
+
+if __name__ == "__main__":
+    main()
