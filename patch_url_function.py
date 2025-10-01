@@ -12,7 +12,6 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s %(message)s"
 )
 logger = logging.getLogger(__name__)
-BACKEND_URL = os.getenv("BACKEND_URL")
 
 async def patch_url_function_progress(url, response_data, uuid=None):
     try:

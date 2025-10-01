@@ -1,64 +1,17 @@
-from typing import Optional, List, Dict, Any
+# pylint: disable=all
+# fmt: off
+# flake8: noqaimport os
+from typing import Optional, List
 from pydantic import BaseModel
-from enum import Enum
 
-
-class ResponseStatus(str, Enum):
-    SUCCESS = "SUCCESS"
-    FAILED = "FAILED"
-    EXCEPTION = "EXCEPTION"
-    PROCESSING = "PROCESSING"
-
-
-class PatchResponsePosco(BaseModel):
-    id: str
-    response: Any
-    status: ResponseStatus
-
-
-class QueryRequest(BaseModel):
+class UnifiedQueryRequest(BaseModel):
+    request_id: int
     query: str
-    tracking_id: Optional[str] = None
-    patch_url: Optional[str] = None
+    type: Optional[int] =None
 
-
-class QueryResponse(BaseModel):
-    result: str
-    tool_used: str
-    success: bool
-    chat_history: List[Dict[str, str]]
-
-
-class RiskAssessmentTableResponse(BaseModel):
-    data: List[Dict[str, Any]]
-    success: bool
-    message: str
-
-
-class ToolResponse(BaseModel):
-    data: Any
-    success: bool
-    message: str
-    tool_name: str
-
-
-class PatchRequest(BaseModel):
-    url: str
-    data: Dict[str, Any]
-    uuid: Optional[str] = None
-
-
-class PatchResponse(BaseModel):
-    success: bool
-    message: str
-    response_data: Optional[Dict[str, Any]] = None
-
-
-class TrackingRequest(BaseModel):
-    tracking_id: Optional[str] = None
-    patch_url: Optional[str] = None
-
-
-def patch_response_posco(id: str, response: Any, status: ResponseStatus) -> PatchResponsePosco:
-    """Helper function to create patch response for POSCO"""
-    return PatchResponsePosco(id=id, response=response, status=status)
+class UnifiedQueryResponse(BaseModel):
+    request_id: int
+    type: Optional[int] =None
+    status: int
+    answer: Optional[str] = None
+    sources: Optional[List] = None

@@ -1,3 +1,6 @@
+# pylint: disable=all
+# fmt: off
+# flake8: noqa
 langchain==0.3.27
 langchain-openai==0.3.32
 langchain-qdrant==0.2.0
@@ -14,3 +17,4 @@ pydantic==2.11.7
 openai==1.106.1
 requests==2.32.5
 pandas==2.2.2
+psutil==7.1.0
