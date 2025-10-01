@@ -8,15 +8,14 @@ from functions import (accident_output,get_accident_records,get_chemical_details
                        get_chemical_usage)
 
 import uvicorn
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI
 from dotenv import load_dotenv
 from patch_url_function import patch_url_function_progress
 from pydantic_models import UnifiedQueryResponse,UnifiedQueryRequest
 
 # ===== Load env (keys for your tools' internals) =====
 load_dotenv()
-BACKEND_URL = os.getenv("BACKEND_URL")
+BACKEND_URL = os.getenv("BACKEND_URL")+"/api/documentation"
 
 
 # ===== FastAPI app =====
