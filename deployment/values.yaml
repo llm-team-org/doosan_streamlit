@@ -1,0 +1,31 @@
+namespace: doosan-dev
+image:
+  repository: doaz/doosan-genai
+  tag: 1.0.0
+  pullPolicy: Always
+  imagePullSecret: docker-regcred
+genai:
+  container:
+    port: 8000
+  config:
+    name: genai
+  replicas: 1
+  selector:
+    matchLabels:
+      app: genai
+  template:
+    spec:
+      container:
+        name1: genai
+  resources:
+    requests:
+      memory: "8Gi"
+    limits:
+      memory: "8Gi"
+service:
+  genai:
+    type: ClusterIP
+    port: 443
+    targetPort: 8000
+nodeSelector:
+  doosan: dev

@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: "{{ .Values.genai.template.spec.container.name1 }}"
+  namespace: {{ .Values.namespace }}
+spec:
+  revisionHistoryLimit: 0
+  replicas: {{ .Values.genai.replicas }}
+  selector:
+    matchLabels:
+      app:  {{ .Values.genai.selector.matchLabels.app }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.genai.selector.matchLabels.app }}
+    spec:
+{{- with .Values.nodeSelector }}
+      nodeSelector:
+{{ toYaml . | nindent 8 }}
+{{- end }}
+      imagePullSecrets:
+      - name: {{ .Values.image.imagePullSecret }}
+      containers:
+      - name: {{ .Values.genai.template.spec.container.name1}}
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        envFrom:
+        - configMapRef:
+            name: {{ .Values.genai.config.name}} 
+        ports:
+        - containerPort: {{ .Values.genai.container.port}}
+        # resources:
+        #   requests:
+        #     memory: {{ .Values.genai.resources.requests.memory }}
+        #   limits:
+        #     memory: {{ .Values.genai.resources.limits.memory }} 

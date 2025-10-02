@@ -1,0 +1,14 @@
+# templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: "{{ .Values.genai.template.spec.container.name1 }}"
+  namespace: {{ .Values.namespace }}
+spec:
+  selector:
+    app: {{ .Values.genai.selector.matchLabels.app }}
+  ports:
+    - protocol: TCP
+      port: {{ .Values.service.genai.port }}
+      targetPort: {{ .Values.service.genai.targetPort }}
+  type: NodePort

@@ -1,0 +1,115 @@
+on:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+env:
+  EKS_CLUSTER_NAME: ${{secrets.CLUSTER_NAME_3}}
+  AWS_REGION: ${{secrets.AWS_DEPLOYMENT_REGION_3}}
+  USER: ${{secrets.DOCKER_BOT}}
+  REPO: doosan-genai
+  RELEASE_NAME: genai
+  NAMESPACE: doosan-dev
+
+jobs:
+  build:
+    name: Deployment
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set short git commit SHA
+        id: commit
+        uses: prompt/actions-commit-hash@v2
+      - name: Check out code
+        uses: actions/checkout@v2
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{env.AWS_REGION}}
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_BOT }}
+          password: ${{ secrets.DOCKER_PAT }}
+      - name: Notify Slack
+        uses: act10ns/slack@v2.1.0
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
+        with:
+          status: ${{ job.status }}
+          channel: "#deployment-updates"
+          message: docker build started for {{ env.GITHUB_REF_NAME }} branch with image name  ${{env.USER}}/${{env.REPO}}:${{ steps.commit.outputs.short }}
+        if: success()
+
+      - name: Build the Docker Image
+        run: docker build . --file Dockerfile --tag ${{env.USER}}/${{env.REPO}}:${{ steps.commit.outputs.short }}
+
+      - name: Push Docker image
+        run: docker push ${{env.USER}}/${{env.REPO}}:${{ steps.commit.outputs.short }}
+
+      - name: Notify Slack
+        uses: act10ns/slack@v2.1.0
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
+        with:
+          status: ${{ job.status }}
+          channel: "#deployment-updates"
+          message: docker push completed for  {{ env.GITHUB_REF_NAME }} branch  with image name  ${{env.USER}}/${{env.REPO}}:${{ steps.commit.outputs.short }}
+        if: success()
+
+      - name: Update kube config
+        run: aws eks update-kubeconfig --name $EKS_CLUSTER_NAME --region $AWS_REGION
+
+      - name: Update values.yaml with Docker credentials
+        run: |
+          sed -i.bak "s|username:.*|username: ${{ secrets.DOCKER_BOT }}|g" deployment/values.yaml
+          sed -i.bak "s|password:.*|password: ${{ secrets.DOCKER_PAT }}|g" deployment/values.yaml
+          sed -i.bak "s|email:.*|email: ${{ secrets.DOCKER_EMAIL }}|g" deployment/values.yaml
+
+      - name: Update Image tag
+        env:
+          IMAGE_TAG: ${{ steps.commit.outputs.short }}
+        run: |
+          sed -i.bak "s|tag:.*|tag: '$IMAGE_TAG'|g" deployment/values.yaml
+
+      - name: Notify Slack
+        uses: act10ns/slack@v2.1.0
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
+        with:
+          status: ${{ job.status }}
+          channel: "#deployment-updates"
+          message: deployment for  {{ env.GITHUB_REF_NAME }} branch started by ${{ github.actor  }}
+        if: success()
+
+      - name: Deploy helm chart
+        uses: llm-team-org/aws-eks-helm-docker@helm-test
+        with:
+          exec: helm upgrade --install ${{env.RELEASE_NAME}}  deployment/ -n ${{env.NAMESPACE}} --create-namespace
+
+      - name: Notify Slack
+        uses: act10ns/slack@v2.1.0
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
+        with:
+          status: ${{ job.status }}
+          steps: ${{toJson(steps)}}
+          channel: "#deployment-updates"
+          message: Deployed {{ env.GITHUB_REF_NAME }} branch Successfully by ${{ github.actor  }} >> image tag >> ${{env.USER}}/${{env.REPO}}:${{ steps.commit.outputs.short }}
+        if: success()
+
+      - name: Notify Slack - Workflow Failed
+        uses: act10ns/slack@v2.1.0
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
+        with:
+          status: failure
+          channel: "#deployment-updates"
+          message: "❌ Backend deployment failed for ${{ github.ref_name }} branch by ${{ github.actor }}. Check GitHub Actions logs for details. Image: ${{env.USER}}/${{env.REPO}}:${{ steps.commit.outputs.short }}"
+        if: failure()

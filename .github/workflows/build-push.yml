@@ -1,0 +1,57 @@
+name: Build, Push Docker Image
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch to build the Docker image from"
+        required: true
+        default: "main"
+jobs:
+  build_and_deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.inputs.branch }}
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3.1.0
+        with:
+          username: ${{ secrets.DOCKER_BOT }}
+          password: ${{ secrets.DOCKER_PAT }}
+
+      - name: Get Commit Hash
+        id: commit
+        run: echo "COMMIT_HASH=$(git rev-parse HEAD)" >> $GITHUB_ENV
+
+      - name: Notify Slack - Build Started
+        uses: act10ns/slack@v2.1.0
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
+        with:
+          status: ${{ job.status }}
+          channel: "#deployment-updates"
+          message: "Docker build started for ${{ github.event.inputs.branch }} branch with image name doaz/doosan-genai:${{ github.event.inputs.branch }}_${{ env.COMMIT_HASH }}"
+        if: success()
+
+      - name: Build the Docker Image
+        run: docker build . --file Dockerfile --tag doaz/doosan-genai:${{ github.event.inputs.branch }}_${{ env.COMMIT_HASH }}
+
+      - name: Push Docker image
+        run: docker push doaz/doosan-genai:${{ github.event.inputs.branch }}_${{ env.COMMIT_HASH }}
+
+      - name: Notify Slack - Push Completed
+        uses: act10ns/slack@v2.1.0
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
+        with:
+          status: ${{ job.status }}
+          channel: "#deployment-updates"
+          message: "Docker push completed for ${{ github.event.inputs.branch }} branch with image name doaz/doosan-genai:${{ github.event.inputs.branch }}_${{ env.COMMIT_HASH }}"
+        if: success()
+
+      - name: Print Image Tag
+        run: echo "${{ github.event.inputs.branch }}_${{ env.COMMIT_HASH }}"
